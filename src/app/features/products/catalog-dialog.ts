@@ -75,7 +75,10 @@ export interface CatalogDialogData { kind: 'category' | 'unit' }
     .row:last-child{border-bottom:0}.row:hover{background:var(--surface-2)}
     .fam{background:var(--surface-2)}.fam strong{color:var(--text)}.lead{color:var(--brand);--icon-size:1.1rem}
     .sub{padding-left:40px}.branch{width:12px;height:12px;border-left:2px solid var(--border-strong);border-bottom:2px solid var(--border-strong);border-bottom-left-radius:6px;margin-top:-8px;flex:none}
-    .pill{padding:1px 8px;border-radius:999px;background:#f2f4f7;color:var(--muted);font-size:12px}
+    .pill{flex:none;white-space:nowrap;padding:1px 8px;border-radius:999px;background:#f2f4f7;color:var(--muted);font-size:12px}
+    .row>strong,.row>span:not(.pill):not(.spacer):not(.branch):not(.tile){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .row .act,.row .lead,.row .tile{flex:none}
+    @media (max-width:560px){.head{padding:16px 16px 4px;gap:10px}.badge{width:38px;height:38px}mat-dialog-content{padding:10px 16px 4px!important}.add{padding:12px}.add button{width:100%;height:48px}.code{flex:1 1 100%}.row{padding:4px 2px 4px 12px;gap:6px}.sub{padding-left:22px}.act{width:36px;height:36px;padding:6px}mat-dialog-actions{padding:10px 16px 16px!important}}
     .tile{min-width:44px;text-align:center;padding:4px 8px;border-radius:var(--r-md);background:var(--brand-50);color:var(--brand);font-weight:600;font-size:13px}
     .spacer{flex:1}
     .act{color:var(--muted);opacity:.75;transition:opacity var(--t-fast),color var(--t-fast)}.row:hover .act,.act:focus-visible{opacity:1}.act:hover{color:var(--brand)}.act.del:hover{color:var(--danger)}
@@ -107,4 +110,4 @@ export class CatalogDialog {
   editUnit(u: UnitDto) { prompt(this.dialog, { title: `Modifier l’unité ${u.code}`, label: 'Libellé', value: u.name }).subscribe((n) => n && this.svc.updateUnit(u.id, { name: n }).subscribe(this.done('Unité modifiée'))); }
   removeUnit(u: UnitDto) { confirm(this.dialog, { title: 'Supprimer l’unité', message: `Supprimer « ${u.code} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteUnit(u.id).subscribe(this.done('Unité supprimée'))); }
 }
-export const openCatalog = (d: MatDialog, kind: CatalogDialogData['kind']): Observable<unknown> => d.open(CatalogDialog, { data: { kind }, width: '640px', maxWidth: '94vw', autoFocus: 'first-tabbable' }).afterClosed();
+export const openCatalog = (d: MatDialog, kind: CatalogDialogData['kind']): Observable<unknown> => d.open(CatalogDialog, { data: { kind }, width: '640px', maxWidth: '94vw', autoFocus: 'dialog' }).afterClosed();
