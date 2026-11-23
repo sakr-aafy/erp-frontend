@@ -47,14 +47,13 @@ export interface CatalogDialogData { kind: 'category' | 'unit' }
         </div>
       } @else {
         @if (canCreate) {<form class="add" [formGroup]="unitForm" (ngSubmit)="addUnit()">
-          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="code"><mat-label>Code</mat-label><input matInput formControlName="code" maxlength="12" /></mat-form-field>
-          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow"><mat-label>Libellé</mat-label><input matInput formControlName="name" /></mat-form-field>
+          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow"><mat-label>Nom de l’unité</mat-label><input matInput formControlName="name" placeholder="ex. Pièce, Kilogramme, Litre" /></mat-form-field>
           <button mat-flat-button color="primary" [disabled]="unitForm.invalid"><app-icon name="add" />Ajouter</button></form>}
         <div class="list">
           @for (u of units(); track u.id) {
-            <div class="row"><span class="tile">{{ u.code }}</span><span>{{ u.name }}</span><span class="spacer"></span>
-              @if (canUpdate) {<button mat-icon-button class="act" type="button" (click)="editUnit(u)" aria-label="Modifier {{ u.code }}"><app-icon name="edit" /></button>}
-              @if (canDelete) {<button mat-icon-button class="act del" type="button" (click)="removeUnit(u)" aria-label="Supprimer {{ u.code }}"><app-icon name="delete" /></button>}</div>
+            <div class="row"><app-icon name="straighten" class="lead" /><span>{{ u.name }}</span><span class="spacer"></span>
+              @if (canUpdate) {<button mat-icon-button class="act" type="button" (click)="editUnit(u)" aria-label="Modifier {{ u.name }}"><app-icon name="edit" /></button>}
+              @if (canDelete) {<button mat-icon-button class="act del" type="button" (click)="removeUnit(u)" aria-label="Supprimer {{ u.name }}"><app-icon name="delete" /></button>}</div>
           } @empty {<div class="empty"><app-icon name="straighten" /><p>Aucune unité. Créez-en une (ex. PCE) avant d’ajouter des articles.</p></div>}
         </div>
       }
@@ -91,7 +90,7 @@ export class CatalogDialog {
   canCreate = this.auth.has('products:create'); canUpdate = this.auth.has('products:update'); canDelete = this.auth.has('products:delete');
   cats = signal<CategoryDto[]>([]); units = signal<UnitDto[]>([]);
   catForm = this.fb.nonNullable.group({ name: ['', Validators.required], parent: [''] });
-  unitForm = this.fb.nonNullable.group({ code: ['', Validators.required], name: ['', Validators.required] });
+  unitForm = this.fb.nonNullable.group({ name: ['', [Validators.required, Validators.maxLength(60)]] });
   families = () => this.cats().filter((c) => !c.parentId);
   subs = (id: string) => this.cats().filter((c) => c.parentId === id);
   constructor() { this.load(); }
@@ -103,11 +102,19 @@ export class CatalogDialog {
   }
   rename(c: CategoryDto) { prompt(this.dialog, { title: 'Modifier la catégorie', label: 'Nom', value: c.name }).subscribe((n) => n && this.svc.renameCategory(c.id, n).subscribe(this.done('Catégorie modifiée'))); }
   removeCategory(c: CategoryDto) { confirm(this.dialog, { title: 'Supprimer la catégorie', message: `Supprimer « ${c.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteCategory(c.id).subscribe(this.done('Catégorie supprimée'))); }
-  addUnit() {
-    if (this.unitForm.invalid) return; const { code, name } = this.unitForm.getRawValue();
-    this.svc.createUnit(code.trim(), name.trim()).subscribe({ next: () => { this.unitForm.reset({ code: '', name: '' }); this.toast.success('Unité ajoutée'); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
+  /** Le code technique (requis par l'API, unique) est dérivé automatiquement du nom : l'utilisateur ne le saisit plus. */
+  private codeFor(name: string): string {
+    const base = (name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '').toUpperCase() || 'U').slice(0, 10);
+    const used = new Set(this.units().map((u) => u.code.toUpperCase()));
+    let code = base; for (let i = 2; used.has(code); i++) code = base.slice(0, 12 - String(i).length) + i;
+    return code;
   }
-  editUnit(u: UnitDto) { prompt(this.dialog, { title: `Modifier l’unité ${u.code}`, label: 'Libellé', value: u.name }).subscribe((n) => n && this.svc.updateUnit(u.id, { name: n }).subscribe(this.done('Unité modifiée'))); }
-  removeUnit(u: UnitDto) { confirm(this.dialog, { title: 'Supprimer l’unité', message: `Supprimer « ${u.code} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteUnit(u.id).subscribe(this.done('Unité supprimée'))); }
+  addUnit() {
+    if (this.unitForm.invalid) return; const name = this.unitForm.getRawValue().name.trim();
+    if (this.units().some((u) => u.name.trim().toLowerCase() === name.toLowerCase())) { this.toast.error('Cette unité existe déjà'); return; }
+    this.svc.createUnit(this.codeFor(name), name).subscribe({ next: () => { this.unitForm.reset({ name: '' }); this.toast.success('Unité ajoutée'); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
+  }
+  editUnit(u: UnitDto) { prompt(this.dialog, { title: 'Modifier l’unité', label: 'Nom de l’unité', value: u.name }).subscribe((n) => n && this.svc.updateUnit(u.id, { name: n }).subscribe(this.done('Unité modifiée'))); }
+  removeUnit(u: UnitDto) { confirm(this.dialog, { title: 'Supprimer l’unité', message: `Supprimer « ${u.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteUnit(u.id).subscribe(this.done('Unité supprimée'))); }
 }
 export const openCatalog = (d: MatDialog, kind: CatalogDialogData['kind']): Observable<unknown> => d.open(CatalogDialog, { data: { kind }, width: '640px', maxWidth: '94vw', autoFocus: 'dialog' }).afterClosed();
