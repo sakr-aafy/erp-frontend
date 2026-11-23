@@ -1,0 +1,60 @@
+<mat-sidenav-container class="shell">
+  <mat-sidenav class="sidebar" [class.compact]="compact()" [mode]="isMobile() ? 'over' : 'side'" [opened]="isMobile() ? mobileOpen() : true" (closedStart)="mobileOpen.set(false)" [fixedInViewport]="true">
+    <div class="brand">
+      <a routerLink="/dashboard" class="brand-link" aria-label="Accueil"><img src="assets/logo.png" alt="Logo" class="logo" width="40" height="40" />
+        @if (!compact()) {<span class="brand-text"><strong>ERP</strong><small>Gestion d’entreprise</small></span>}</a>
+      @if (isMobile()) {<button mat-icon-button class="close" (click)="mobileOpen.set(false)" aria-label="Fermer le menu"><app-icon name="close" /></button>}
+    </div>
+    <nav aria-label="Navigation principale">
+      @for (g of groups(); track g.title) {
+        @if (g.flat || compact()) {
+          @if (!g.flat && compact()) {<div class="divider"></div>}
+          @for (i of g.items; track i.label) {
+            <a [routerLink]="i.route" [queryParams]="i.query" class="item" [class.active]="isActive(i)" [attr.aria-current]="isActive(i) ? 'page' : null" [matTooltip]="compact() ? i.label : ''" matTooltipPosition="right">
+              <app-icon [name]="i.icon" />@if (!compact()) {<span>{{ i.label }}</span>}
+            </a>
+          }
+        } @else {
+          <button type="button" class="group" [class.open]="isOpen(g)" [class.has-active]="g === activeGroup()" (click)="toggleGroup(g)" [attr.aria-expanded]="isOpen(g)">
+            <app-icon [name]="g.icon" class="gicon" /><span>{{ g.title }}</span><app-icon name="chevron_right" class="chev" />
+          </button>
+          <div class="sub" [class.open]="isOpen(g)"><div class="sub-in">
+            @for (i of g.items; track i.label) {
+              <a [routerLink]="i.route" [queryParams]="i.query" class="item sub-item" [class.active]="isActive(i)" [attr.aria-current]="isActive(i) ? 'page' : null" [attr.tabindex]="isOpen(g) ? 0 : -1">
+                <app-icon [name]="i.icon" /><span>{{ i.label }}</span>
+              </a>
+            }
+          </div></div>
+        }
+      }
+    </nav>
+    @if (!isMobile()) {
+      <div class="foot"><button type="button" class="collapse-btn" (click)="toggle()" [matTooltip]="compact() ? 'Développer le menu' : ''" matTooltipPosition="right" [attr.aria-label]="compact() ? 'Développer le menu' : 'Réduire le menu'">
+        <app-icon [name]="compact() ? 'panel_open' : 'panel_close'" />@if (!compact()) {<span>Réduire</span>}</button></div>
+    }
+  </mat-sidenav>
+  <mat-sidenav-content class="content" [class.compact]="compact()">
+    <header class="topbar">
+      @if (isMobile()) {<button mat-icon-button (click)="toggle()" aria-label="Ouvrir le menu"><app-icon name="menu" /></button>}
+      <nav class="crumbs" aria-label="Fil d’Ariane">
+        @for (c of breadcrumb(); track $index; let last = $last) {
+          @if (c.link) {<a [routerLink]="c.link">{{ c.label }}</a>} @else {<span [class.current]="last" [attr.aria-current]="last ? 'page' : null">{{ c.label }}</span>}
+          @if (!last) {<app-icon name="chevron_right" class="sep" />}
+        }
+      </nav>
+      <span class="spacer"></span>
+      @if (auth.user()?.company?.name) {<span class="company" [matTooltip]="'Société'"><app-icon name="domain" /><span class="cname">{{ auth.user()?.company?.name }}</span></span>}
+      <button type="button" class="user-btn" [matMenuTriggerFor]="userMenu" aria-label="Menu utilisateur">
+        <span class="avatar">{{ initials() }}</span>
+        <span class="uname">{{ auth.user()?.name }}<small>{{ auth.user()?.role?.name }}</small></span>
+        <app-icon name="arrow_drop_down" class="caret" />
+      </button>
+      <mat-menu #userMenu="matMenu" xPosition="before">
+        <div class="menu-head"><strong>{{ auth.user()?.name }}</strong><small>{{ auth.user()?.email }}</small></div>
+        <a mat-menu-item routerLink="/change-password"><app-icon name="key" />Changer le mot de passe</a>
+        <button mat-menu-item (click)="auth.logout()"><app-icon name="logout" />Déconnexion</button>
+      </mat-menu>
+    </header>
+    <main><router-outlet /></main>
+  </mat-sidenav-content>
+</mat-sidenav-container>
