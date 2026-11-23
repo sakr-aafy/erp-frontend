@@ -45,3 +45,11 @@ export function categoryOptions(cats: CategoryDto[]): { id: string; label: strin
   const byId = new Map(cats.map((c) => [c.id, c]));
   return cats.map((c) => ({ id: c.id, label: c.parentId ? `${byId.get(c.parentId)?.name ?? '?'} › ${c.name}` : c.name })).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
 }
+
+/** Code technique d'unité (requis et unique côté API), dérivé du nom : sans accents ni espaces, majuscules, suffixe numérique en cas de doublon. */
+export function unitCodeFor(name: string, existing: { code: string }[]): string {
+  const base = (name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '').toUpperCase() || 'U').slice(0, 10);
+  const used = new Set(existing.map((u) => u.code.toUpperCase()));
+  let code = base; for (let i = 2; used.has(code); i++) code = base.slice(0, 12 - String(i).length) + i;
+  return code;
+}

@@ -14,7 +14,7 @@ import { confirm } from '../../shared/components/confirm-dialog';
 import { PageHeader } from '../../shared/components/page-header';
 import { CategoryDto, UnitDto } from '../../shared/models/api.models';
 import { prompt } from '../../shared/components/prompt-dialog';
-import { ProductService } from './product.service';
+import { ProductService, unitCodeFor } from './product.service';
 
 @Component({
   selector: 'app-catalog',
@@ -40,11 +40,10 @@ import { ProductService } from './product.service';
         </div>
         <div class="card"><h3>Unités de mesure</h3>
           @if (canCreate) {<form class="add" [formGroup]="unitForm" (ngSubmit)="addUnit()">
-            <mat-form-field appearance="outline" subscriptSizing="dynamic" style="max-width:120px"><mat-label>Code</mat-label><input matInput formControlName="code" maxlength="12" /></mat-form-field>
-            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Libellé</mat-label><input matInput formControlName="name" /></mat-form-field>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Nom de l’unité</mat-label><input matInput formControlName="name" placeholder="ex. Pièce, Kilogramme, Litre" /></mat-form-field>
             <button mat-flat-button color="primary" [disabled]="unitForm.invalid">Ajouter</button></form>}
           @for (u of units(); track u.id) {
-            <div class="item"><strong>{{ u.code }}</strong><span>{{ u.name }}</span><span class="spacer"></span>
+            <div class="item"><span>{{ u.name }}</span><span class="spacer"></span>
               @if (canUpdate) {<button mat-icon-button (click)="editUnit(u)" aria-label="Renommer"><app-icon name="edit" /></button>}
               @if (canDelete) {<button mat-icon-button (click)="removeUnit(u)" aria-label="Supprimer"><app-icon name="delete" /></button>}</div>
           } @empty {<p class="muted">Aucune unité. Créez au moins une unité (ex. PCE) avant d’ajouter des articles.</p>}
@@ -60,7 +59,7 @@ export class CatalogPage {
   cats = signal<CategoryDto[]>([]); units = signal<UnitDto[]>([]);
   private fb = inject(FormBuilder);
   catForm = this.fb.nonNullable.group({ name: ['', Validators.required], parent: [''] });
-  unitForm = this.fb.nonNullable.group({ code: ['', Validators.required], name: ['', Validators.required] });
+  unitForm = this.fb.nonNullable.group({ name: ['', [Validators.required, Validators.maxLength(60)]] });
   families = () => this.cats().filter((c) => !c.parentId);
   subs = (id: string) => this.cats().filter((c) => c.parentId === id);
   constructor() { this.load(); }
@@ -75,9 +74,10 @@ export class CatalogPage {
   removeCategory(c: CategoryDto) { confirm(this.dialog, { title: 'Supprimer la catégorie', message: `Supprimer « ${c.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteCategory(c.id).subscribe(this.done('Catégorie supprimée'))); }
   addUnit() {
     if (this.unitForm.invalid) return;
-    const { code, name } = this.unitForm.getRawValue();
-    this.svc.createUnit(code.trim(), name.trim()).subscribe({ next: () => { this.unitForm.reset({ code: '', name: '' }); this.toast.success('Unité ajoutée'); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
+    const name = this.unitForm.getRawValue().name.trim();
+    if (this.units().some((u) => u.name.trim().toLowerCase() === name.toLowerCase())) { this.toast.error('Cette unité existe déjà'); return; }
+    this.svc.createUnit(unitCodeFor(name, this.units()), name).subscribe({ next: () => { this.unitForm.reset({ name: '' }); this.toast.success('Unité ajoutée'); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
   }
-  editUnit(u: UnitDto) { prompt(this.dialog, { title: `Renommer l’unité ${u.code}`, label: 'Libellé', value: u.name }).subscribe((n) => n && this.svc.updateUnit(u.id, { name: n }).subscribe(this.done('Unité modifiée'))); }
-  removeUnit(u: UnitDto) { confirm(this.dialog, { title: 'Supprimer l’unité', message: `Supprimer « ${u.code} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteUnit(u.id).subscribe(this.done('Unité supprimée'))); }
+  editUnit(u: UnitDto) { prompt(this.dialog, { title: 'Renommer l’unité', label: 'Nom de l’unité', value: u.name }).subscribe((n) => n && this.svc.updateUnit(u.id, { name: n }).subscribe(this.done('Unité modifiée'))); }
+  removeUnit(u: UnitDto) { confirm(this.dialog, { title: 'Supprimer l’unité', message: `Supprimer « ${u.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteUnit(u.id).subscribe(this.done('Unité supprimée'))); }
 }

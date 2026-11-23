@@ -13,7 +13,7 @@ import { confirm } from '../../shared/components/confirm-dialog';
 import { Icon } from '../../shared/components/icon';
 import { prompt } from '../../shared/components/prompt-dialog';
 import { CategoryDto, UnitDto } from '../../shared/models/api.models';
-import { ProductService } from './product.service';
+import { ProductService, unitCodeFor } from './product.service';
 
 export interface CatalogDialogData { kind: 'category' | 'unit' }
 
@@ -102,17 +102,10 @@ export class CatalogDialog {
   }
   rename(c: CategoryDto) { prompt(this.dialog, { title: 'Modifier la catégorie', label: 'Nom', value: c.name }).subscribe((n) => n && this.svc.renameCategory(c.id, n).subscribe(this.done('Catégorie modifiée'))); }
   removeCategory(c: CategoryDto) { confirm(this.dialog, { title: 'Supprimer la catégorie', message: `Supprimer « ${c.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteCategory(c.id).subscribe(this.done('Catégorie supprimée'))); }
-  /** Le code technique (requis par l'API, unique) est dérivé automatiquement du nom : l'utilisateur ne le saisit plus. */
-  private codeFor(name: string): string {
-    const base = (name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '').toUpperCase() || 'U').slice(0, 10);
-    const used = new Set(this.units().map((u) => u.code.toUpperCase()));
-    let code = base; for (let i = 2; used.has(code); i++) code = base.slice(0, 12 - String(i).length) + i;
-    return code;
-  }
   addUnit() {
     if (this.unitForm.invalid) return; const name = this.unitForm.getRawValue().name.trim();
     if (this.units().some((u) => u.name.trim().toLowerCase() === name.toLowerCase())) { this.toast.error('Cette unité existe déjà'); return; }
-    this.svc.createUnit(this.codeFor(name), name).subscribe({ next: () => { this.unitForm.reset({ name: '' }); this.toast.success('Unité ajoutée'); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
+    this.svc.createUnit(unitCodeFor(name, this.units()), name).subscribe({ next: () => { this.unitForm.reset({ name: '' }); this.toast.success('Unité ajoutée'); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
   }
   editUnit(u: UnitDto) { prompt(this.dialog, { title: 'Modifier l’unité', label: 'Nom de l’unité', value: u.name }).subscribe((n) => n && this.svc.updateUnit(u.id, { name: n }).subscribe(this.done('Unité modifiée'))); }
   removeUnit(u: UnitDto) { confirm(this.dialog, { title: 'Supprimer l’unité', message: `Supprimer « ${u.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteUnit(u.id).subscribe(this.done('Unité supprimée'))); }
