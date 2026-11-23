@@ -4,7 +4,7 @@ import {
   Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleAlert, CircleCheck, CircleX, ClipboardCheck, Clock, Coins, Copy, Download, EllipsisVertical, Eye, FilePlus, FileText, FileUp,
   Filter, Info, KeyRound, Landmark, LayoutDashboard, List, ListChecks, ListPlus, Lock, LogOut, Mail, Menu, Package, PackageOpen, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, PlaneLanding,
   Plus, Printer, Receipt, ReceiptText, RefreshCw, Save, Search, Send, Settings, Shapes, Shield, ShieldCheck, ShoppingCart, Table, ThumbsDown, Trash2, TriangleAlert, TrendingUp, Truck, Undo2, Upload,
-  UserCog, UserPlus, UserX, Users, Warehouse, X, IdCard, EyeOff,
+  UserCog, UserPlus, UserX, Users, Warehouse, X, IdCard, EyeOff, Ruler,
   type IconNode,
 } from 'lucide';
 
@@ -15,7 +15,7 @@ const ICONS: Record<string, IconNode> = {
   picture_as_pdf: FileText, description: FileText, request_quote: FileText, payments: Banknote, more_vert: EllipsisVertical, inventory: Boxes, inventory_2: Package, info: Info, history: Clock,
   content_copy: Copy, cancel: CircleX, block: Ban, attach_file: Paperclip, warehouse: Warehouse, visibility: Eye, verified_user: ShieldCheck, shield: Shield, upload_file: FileUp, thumb_down: ThumbsDown,
   table_view: Table, send: Send, save: Save, refresh: RefreshCw, receipt: Receipt, receipt_long: ReceiptText, playlist_add: ListPlus, person_add: UserPlus, note_add: FilePlus, move_to_inbox: PackageOpen,
-  menu: Menu, mail: Mail, logout: LogOut, list_alt: List, key: KeyRound, group: Users, groups: Users, group_off: UserX, domain: Building2, close: X, check_circle: CircleCheck, check: Check, category: Shapes,
+  straighten: Ruler, menu: Menu, mail: Mail, logout: LogOut, list_alt: List, key: KeyRound, group: Users, groups: Users, group_off: UserX, domain: Building2, close: X, check_circle: CircleCheck, check: Check, category: Shapes,
   calculate: Calculator, badge: IdCard, arrow_drop_down: ChevronDown, expand_more: ChevronDown, expand_less: ChevronUp, chevron_right: ChevronRight, chevron_left: ChevronLeft, account_balance: Landmark,
   admin_panel_settings: UserCog, currency_exchange: Coins, dashboard: LayoutDashboard, flight_land: PlaneLanding, local_shipping: Truck, menu_book: BookOpen, settings: Settings, shopping_cart: ShoppingCart,
   panel_close: PanelLeftClose, panel_open: PanelLeftOpen, notifications: Bell, error: CircleAlert, schedule: Clock, calendar: CalendarDays, filter: Filter, trend_up: TrendingUp, arrow_up: ArrowUp, arrow_down: ArrowDown,

@@ -2,7 +2,7 @@
   <mat-sidenav class="sidebar" [class.compact]="compact()" [mode]="isMobile() ? 'over' : 'side'" [opened]="isMobile() ? mobileOpen() : true" (closedStart)="mobileOpen.set(false)" [fixedInViewport]="true">
     <div class="brand">
       <a routerLink="/dashboard" class="brand-link" aria-label="Accueil"><img src="assets/logo.png" alt="Logo" class="logo" width="40" height="40" />
-        @if (!compact()) {<span class="brand-text"><strong>ERP</strong><small>Gestion d’entreprise</small></span>}</a>
+        @if (!compact()) {<span class="brand-text"><strong>Machimex</strong><small>Gestion d’entreprise</small></span>}</a>
       @if (isMobile()) {<button mat-icon-button class="close" (click)="mobileOpen.set(false)" aria-label="Fermer le menu"><app-icon name="close" /></button>}
     </div>
     <nav aria-label="Navigation principale">

@@ -15,7 +15,7 @@ import { errorMessage } from '../../core/services/api';
   styleUrl: './auth-card.scss',
   template: `
     <div class="box">
-      <div class="logo"><img src="assets/logo.png" alt="" width="48" height="48" /><span>ERP<small>Gestion d’entreprise</small></span></div>
+      <div class="logo"><img src="assets/logo.png" alt="" width="48" height="48" /><span>Machimex<small>Gestion d’entreprise</small></span></div>
       <h2>Connexion</h2><p>Accédez à votre espace de gestion</p>
       @if (error()) {<div class="error" role="alert">{{ error() }}</div>}
       <form [formGroup]="form" (ngSubmit)="submit()">

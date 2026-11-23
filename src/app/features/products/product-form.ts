@@ -7,8 +7,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { Icon } from '../../shared/components/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatDialog } from '@angular/material/dialog';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/authentication/auth.service';
 import { errorMessage } from '../../core/services/api';
@@ -18,11 +20,12 @@ import { PageHeader } from '../../shared/components/page-header';
 import { Skeleton } from '../../shared/components/skeleton';
 import { Page, SupplierDto, UnitDto } from '../../shared/models/api.models';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
+import { openCatalog } from './catalog-dialog';
 import { ProductService, categoryOptions } from './product.service';
 
 @Component({
   selector: 'app-product-form',
-  imports: [ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatSlideToggleModule, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatSlideToggleModule, MatButtonModule, MatTooltipModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">
       <app-page-header [title]="id() ? 'Modifier l’article' : 'Nouvel article'" subtitle="La référence est unique. Les prix sont saisis dans la devise de base." />
@@ -36,8 +39,8 @@ import { ProductService, categoryOptions } from './product.service';
           <mat-form-field appearance="outline"><mat-label>Désignation</mat-label><input matInput formControlName="name" />
             @if (form.controls.name.invalid && form.controls.name.touched) {<mat-error>2 caractères minimum</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Type</mat-label><mat-select formControlName="kind"><mat-option value="product">Produit</mat-option><mat-option value="service">Service</mat-option></mat-select></mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Catégorie</mat-label><mat-select formControlName="categoryId"><mat-option value="">Aucune</mat-option>@for (c of cats(); track c.id) {<mat-option [value]="c.id">{{ c.label }}</mat-option>}</mat-select></mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Unité de mesure</mat-label><mat-select formControlName="unitId">@for (u of units(); track u.id) {<mat-option [value]="u.id">{{ u.code }} — {{ u.name }}</mat-option>}</mat-select>
+          <mat-form-field appearance="outline">@if (canManage) {<button matPrefix mat-icon-button class="gear" type="button" (click)="manage('category')" aria-label="Gérer les catégories" matTooltip="Gérer les catégories"><app-icon name="settings" /></button>}<mat-label>Catégorie</mat-label><mat-select formControlName="categoryId"><mat-option value="">Aucune</mat-option>@for (c of cats(); track c.id) {<mat-option [value]="c.id">{{ c.label }}</mat-option>}</mat-select></mat-form-field>
+          <mat-form-field appearance="outline">@if (canManage) {<button matPrefix mat-icon-button class="gear" type="button" (click)="manage('unit')" aria-label="Gérer les unités de mesure" matTooltip="Gérer les unités de mesure"><app-icon name="settings" /></button>}<mat-label>Unité de mesure</mat-label><mat-select formControlName="unitId">@for (u of units(); track u.id) {<mat-option [value]="u.id">{{ u.code }} — {{ u.name }}</mat-option>}</mat-select>
             @if (form.controls.unitId.invalid && form.controls.unitId.touched) {<mat-error>Unité requise (créez-en dans Catégories & unités)</mat-error>}</mat-form-field>
         </div>
           <mat-form-field appearance="outline" style="width:100%;margin-top:8px"><mat-label>Description</mat-label><textarea matInput rows="2" formControlName="description"></textarea></mat-form-field></div>
@@ -62,13 +65,19 @@ import { ProductService, categoryOptions } from './product.service';
           <button mat-flat-button color="primary" [disabled]="saving()">Enregistrer</button></div>
       </form>}
     </div>`,
-  styles: `h3{margin:0 0 12px;font-size:16px}.warn{background:var(--accent-50);border-color:var(--accent-300);margin-bottom:16px;display:flex;gap:8px;align-items:center}
+  styles: `.gear{width:36px;height:36px;margin:0 4px 0 8px;padding:0;border-radius:var(--r-md);color:var(--muted);--icon-size:1.15rem;transition:background var(--t-fast),color var(--t-fast)}.gear:hover,.gear:focus-visible{background:var(--brand-50);color:var(--brand)}h3{margin:0 0 12px;font-size:16px}.warn{background:var(--accent-50);border-color:var(--accent-300);margin-bottom:16px;display:flex;gap:8px;align-items:center}
     .warn-inline{display:flex;gap:6px;align-items:center;color:var(--danger);font-weight:500}`,
 })
 export class ProductForm {
   id = input<string>();
   private fb = inject(FormBuilder); private svc = inject(ProductService); private router = inject(Router); private toast = inject(ToastService); private http = inject(HttpClient);
-  ref = inject(ReferenceDataService); private auth = inject(AuthService);
+  ref = inject(ReferenceDataService); private auth = inject(AuthService); private dialog = inject(MatDialog);
+  canManage = this.auth.has('products:create') || this.auth.has('products:update') || this.auth.has('products:delete');
+  manage(kind: 'category' | 'unit') { openCatalog(this.dialog, kind).subscribe(() => this.reloadCatalog()); }
+  private reloadCatalog() {
+    this.svc.categories().subscribe((c) => { this.cats.set(categoryOptions(c)); if (!c.some((x) => x.id === this.form.controls.categoryId.value)) this.form.controls.categoryId.setValue(''); });
+    this.svc.units().subscribe((u) => { this.units.set(u); if (!u.some((x) => x.id === this.form.controls.unitId.value)) this.form.controls.unitId.setValue(''); });
+  }
   cats = signal<{ id: string; label: string }[]>([]); units = signal<UnitDto[]>([]); suppliers = signal<SupplierDto[]>([]);
   existingCost = signal<number | null>(null);
   form = this.fb.nonNullable.group({
