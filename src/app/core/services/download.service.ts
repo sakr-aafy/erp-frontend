@@ -23,6 +23,18 @@ export class DownloadService {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     }));
   }
+  /** URL d'objet (blob) d'un fichier protégé, pour l'afficher dans la page (miniatures, aperçus). */
+  blobUrl(path: string, params: Record<string, string | number | boolean | undefined> = {}): Observable<string> {
+    return this.fetch(path, params).pipe(map(({ blob }) => URL.createObjectURL(blob)));
+  }
+  /** Ouvre un fichier protégé (PDF, image) dans un nouvel onglet, avec des paramètres (ex. disposition=inline). */
+  open(path: string, params: Record<string, string | number | boolean | undefined> = {}): Observable<void> {
+    return this.fetch(path, params).pipe(map(({ blob }) => {
+      const url = URL.createObjectURL(blob);
+      if (!window.open(url, '_blank', 'noopener')) { const a = document.createElement('a'); a.href = url; a.download = 'document'; a.click(); }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }));
+  }
   private fetch(path: string, params: Record<string, string | number | boolean | undefined>) {
     let p = new HttpParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') p = p.set(k, String(v));

@@ -4,7 +4,7 @@ import {
   Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleAlert, CircleCheck, CircleX, ClipboardCheck, Clock, Coins, Copy, Download, EllipsisVertical, Eye, FilePlus, FileText, FileUp,
   Filter, Info, KeyRound, Landmark, LayoutDashboard, List, ListChecks, ListPlus, Lock, LogOut, Mail, Menu, Package, PackageOpen, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, PlaneLanding,
   Plus, Printer, Receipt, ReceiptText, RefreshCw, Save, Search, Send, Settings, Shapes, Shield, ShieldCheck, ShoppingCart, Table, ThumbsDown, Trash2, TriangleAlert, TrendingUp, Truck, Undo2, Upload,
-  UserCog, UserPlus, UserX, Users, Warehouse, X, IdCard, EyeOff, Ruler,
+  UserCog, UserPlus, UserX, Users, Warehouse, X, IdCard, EyeOff, Ruler, Phone, PhoneCall, Globe, MapPin, User, ExternalLink, FolderOpen, MessageSquare, Video, Link, Briefcase, Percent, CreditCard, Store,
   type IconNode,
 } from 'lucide';
 
@@ -19,6 +19,7 @@ const ICONS: Record<string, IconNode> = {
   calculate: Calculator, badge: IdCard, arrow_drop_down: ChevronDown, expand_more: ChevronDown, expand_less: ChevronUp, chevron_right: ChevronRight, chevron_left: ChevronLeft, account_balance: Landmark,
   admin_panel_settings: UserCog, currency_exchange: Coins, dashboard: LayoutDashboard, flight_land: PlaneLanding, local_shipping: Truck, menu_book: BookOpen, settings: Settings, shopping_cart: ShoppingCart,
   panel_close: PanelLeftClose, panel_open: PanelLeftOpen, notifications: Bell, error: CircleAlert, schedule: Clock, calendar: CalendarDays, filter: Filter, trend_up: TrendingUp, arrow_up: ArrowUp, arrow_down: ArrowDown,
+  phone: Phone, call: PhoneCall, public: Globe, place: MapPin, person: User, open_in_new: ExternalLink, folder: FolderOpen, chat: MessageSquare, videocam: Video, link: Link, work: Briefcase, percent: Percent, credit_card: CreditCard, store: Store,
   visibility_off: EyeOff, circle: Circle, radio_button_unchecked: Circle, hub: Circle,
 };
 

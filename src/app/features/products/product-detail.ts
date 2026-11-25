@@ -1,102 +1,114 @@
-import { Component, inject, input, signal } from '@angular/core';
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { Component, computed, inject, input, signal } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { Icon } from '../../shared/components/icon';
-import { MatInputModule } from '@angular/material/input';
-import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
-import { MatTableModule } from '@angular/material/table';
+import { MatMenuModule } from '@angular/material/menu';
+import { AuthService } from '../../core/authentication/auth.service';
 import { errorMessage } from '../../core/services/api';
 import { ToastService } from '../../core/services/toast.service';
-import { confirm } from '../../shared/components/confirm-dialog';
-import { PageHeader } from '../../shared/components/page-header';
+import { Icon } from '../../shared/components/icon';
 import { Skeleton } from '../../shared/components/skeleton';
-import { HasPermissionDirective } from '../../shared/directives/has-permission.directive';
-import { ProductDto, SerialDto } from '../../shared/models/api.models';
+import { ProductDto } from '../../shared/models/api.models';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
-import { prompt } from '../../shared/components/prompt-dialog';
+import { ProductActions, ProductPhotos, StatusAction } from './product-actions.service';
+import { ProductThumb } from './product-thumb';
+import { STATUS_CHIP, STATUS_HELP } from './product.labels';
 import { ProductService } from './product.service';
+import { TabActivities } from './tabs/tab-activities';
+import { TabCustoms } from './tabs/tab-customs';
+import { TabDocuments } from './tabs/tab-documents';
+import { TabGeneral } from './tabs/tab-general';
+import { TabPackaging } from './tabs/tab-packaging';
+import { TabPrices } from './tabs/tab-prices';
+import { TabStock } from './tabs/tab-stock';
+import { TabTransactions } from './tabs/tab-transactions';
 
-const STATUS: Record<string, string> = { available: 'Disponible', sold: 'Vendu', returned: 'Retourné', scrapped: 'Rebut' };
+type TabKey = 'general' | 'packaging' | 'prices' | 'stock' | 'customs' | 'transactions' | 'documents' | 'activities';
 
+/** Fiche article : en-tête (photo principale), indicateurs réels et huit onglets (Général, Dimension de Packaging et poids, Prix, Stock, Douane, Transactions, Documents, Activités). L'onglet actif est dans l'URL (?tab=). */
 @Component({
   selector: 'app-product-detail',
-  imports: [RouterLink, ReactiveFormsModule, MatButtonModule, Icon, MatTableModule, MatPaginatorModule, MatFormFieldModule, MatInputModule, PageHeader, Skeleton, HasPermissionDirective, MoneyPipe],
+  imports: [RouterLink, MatButtonModule, MatMenuModule, Icon, Skeleton, MoneyPipe, ProductThumb, TabGeneral, TabPackaging, TabPrices, TabStock, TabCustoms, TabTransactions, TabDocuments, TabActivities],
   template: `
     <div class="page">
+      <a class="back" routerLink="/products"><app-icon name="arrow_back" />Retour aux articles</a>
       @if (!p()) {<div class="card"><app-skeleton /></div>} @else {
-      <app-page-header [title]="p()!.name" [subtitle]="p()!.reference + (p()!.isActive ? '' : ' — DÉSACTIVÉ')">
-        <ng-container *appHasPermission="'products:update'"><a mat-stroked-button routerLink="edit"><app-icon name="edit" />Modifier</a>
-          <button mat-stroked-button (click)="toggle()"><app-icon [name]="p()!.isActive ? 'block' : 'check_circle'" />{{ p()!.isActive ? 'Désactiver' : 'Réactiver' }}</button></ng-container>
-        <button mat-stroked-button *appHasPermission="'products:create'" (click)="duplicate()"><app-icon name="content_copy" />Dupliquer</button>
-        <button mat-stroked-button color="warn" *appHasPermission="'products:delete'" (click)="remove()"><app-icon name="delete" />Supprimer</button>
-      </app-page-header>
-      @if (p()!.belowCost) {<div class="card warn"><app-icon name="warning" /> Le prix de vente est inférieur au coût de revient.</div>}
-      <div class="kpis">
-        <div class="card"><span class="muted">Prix d’achat</span><strong>{{ p()!.purchasePriceMinor | money }}</strong></div>
-        <div class="card"><span class="muted">Coût de revient</span><strong>{{ p()!.effectiveCostMinor | money }}</strong><small class="muted">{{ p()!.costPriceMinor === null ? 'basé sur le prix d’achat' : 'module Coût de revient' }}</small></div>
-        <div class="card"><span class="muted">Prix de vente</span><strong>{{ p()!.salePriceMinor | money }}</strong></div>
-        <div class="card"><span class="muted">Marge</span><strong [style.color]="p()!.belowCost ? 'var(--danger)' : null">{{ p()!.marginMinor | money }}</strong>
-          <small class="muted">{{ p()!.marginRatePct ?? '—' }} % du coût · {{ p()!.markPct ?? '—' }} % du prix de vente</small></div>
-      </div>
-      <div class="card"><h3>Informations</h3><dl>
-        <dt>Type</dt><dd>{{ p()!.kind === 'service' ? 'Service' : 'Produit' }}</dd><dt>Catégorie</dt><dd>{{ p()!.categoryName || '—' }}</dd><dt>Unité</dt><dd>{{ p()!.unitCode }}</dd>
-        <dt>Taux de TVA</dt><dd>{{ p()!.vatRateCode }}</dd><dt>Stock minimum</dt><dd>{{ p()!.minStock }}</dd><dt>Fournisseur principal</dt><dd>{{ p()!.mainSupplierName || '—' }}</dd>
-        <dt>Numéros de série</dt><dd>{{ p()!.hasSerial ? 'Oui' : 'Non' }}</dd><dt>Description</dt><dd>{{ p()!.description || '—' }}</dd></dl></div>
-      @if (p()!.hasSerial) {
-        <div class="card" style="margin-top:16px"><h3>Numéros de série ({{ total() }})</h3>
-          <div *appHasPermission="'products:update'" class="serial-add">
-            <mat-form-field appearance="outline" subscriptSizing="dynamic" style="flex:1;min-width:240px"><mat-label>Ajouter des numéros (un par ligne)</mat-label><textarea matInput rows="3" [formControl]="newSerials"></textarea></mat-form-field>
-            <button mat-flat-button color="primary" (click)="addSerials()" [disabled]="newSerials.invalid">Ajouter</button></div>
-          @if (!serials().length) {<p class="muted">Aucun numéro de série enregistré.</p>} @else {
-          <div class="table-wrap"><table mat-table [dataSource]="serials()">
-            <ng-container matColumnDef="sn"><th mat-header-cell *matHeaderCellDef>Numéro de série</th><td mat-cell *matCellDef="let s">{{ s.serialNumber }}</td></ng-container>
-            <ng-container matColumnDef="status"><th mat-header-cell *matHeaderCellDef>Statut</th><td mat-cell *matCellDef="let s">{{ statusLabel(s.status) }}</td></ng-container>
-            <ng-container matColumnDef="actions"><th mat-header-cell *matHeaderCellDef></th><td mat-cell *matCellDef="let s">
-              @if (s.status === 'available') {<button mat-icon-button *appHasPermission="'products:update'" (click)="removeSerial(s)" aria-label="Supprimer"><app-icon name="delete" /></button>}</td></ng-container>
-            <tr mat-header-row *matHeaderRowDef="['sn','status','actions']"></tr><tr mat-row *matRowDef="let r; columns: ['sn','status','actions']"></tr></table></div>}
-          <mat-paginator [length]="total()" [pageSize]="20" [pageIndex]="page()" (page)="onPage($event)" hidePageSize />
-        </div>}
+        <section class="card head">
+          <app-product-thumb [productId]="p()!.id" [photoId]="p()!.mainPhotoId" [kind]="p()!.kind" [alt]="p()!.name" [size]="72" />
+          <div class="id">
+            <div class="nm"><h1>{{ p()!.name }}</h1><span class="chip {{ chip[p()!.status] }}">{{ p()!.statusLabel }}</span></div>
+            <div class="sub"><span class="code">{{ p()!.reference }}</span>@if (p()!.familyName) {<span>·</span><span>{{ p()!.familyName }}@if (p()!.subName) { › {{ p()!.subName }}}</span>}@if (p()!.brand || p()!.model) {<span>·</span><span>{{ brandModel() }}</span>}
+              <span>·</span><span>{{ p()!.kind === 'service' ? 'Service' : 'Produit' }}</span></div>
+          </div>
+          <div class="acts">
+            @if (canEdit()) {<a mat-stroked-button [routerLink]="['edit']"><app-icon name="edit" />Modifier</a>}
+            <button mat-icon-button type="button" [matMenuTriggerFor]="menu" aria-label="Actions sur l’article"><app-icon name="more_vert" /></button>
+            <mat-menu #menu="matMenu" xPosition="before">
+              @if (auth.has('products:create')) {<button mat-menu-item type="button" (click)="actions.duplicate(p()!)"><app-icon name="content_copy" />Dupliquer</button>}
+              <button mat-menu-item type="button" (click)="actions.print(p()!)"><app-icon name="print" />Imprimer la fiche</button>
+              @for (a of statusActions(); track a.target) {<button mat-menu-item type="button" [class.danger]="a.danger" (click)="changeStatus(a)"><app-icon [name]="a.icon" />{{ a.label }}</button>}
+              @if (auth.has('products:delete')) {<button mat-menu-item type="button" class="danger" (click)="remove()"><app-icon name="delete" />Supprimer</button>}
+            </mat-menu>
+          </div>
+        </section>
+        @if (p()!.status !== 'active') {<p class="banner {{ p()!.status }}" role="status"><app-icon [name]="p()!.status === 'blocked' ? 'block' : 'info'" /><span><strong>{{ p()!.statusLabel }}</strong>@if (p()!.statusReason) { — {{ p()!.statusReason }}}. {{ help[p()!.status] }}</span></p>}
+        <div class="kpis">
+          @if (p()!.access.purchase) {<div class="kpi"><span class="muted">Prix d’achat HT</span><strong>{{ p()!.purchasePriceMinor | money }}</strong>@if (p()!.purchaseCurrency) {<span class="sm muted">{{ p()!.purchaseCurrency }} converti</span>}</div>}
+          <div class="kpi"><span class="muted">Prix de vente HT</span><strong>{{ p()!.salePriceMinor | money }}</strong>@if (p()!.saleTtcMinor !== null) {<span class="sm muted">{{ p()!.saleTtcMinor | money }} TTC</span>}</div>
+          @if (p()!.access.cost) {<div class="kpi"><span class="muted">Coût de revient actuel</span><strong>{{ p()!.effectiveCostMinor | money }}</strong><span class="sm muted">{{ p()!.costPriceMinor === null ? (p()!.estimatedCostMinor === null ? 'basé sur le prix d’achat' : 'estimé') : 'calculé (CMP)' }}</span></div>
+            <div class="kpi"><span class="muted">Marge HT</span><strong [class.neg]="(p()!.marginMinor ?? 0) < 0">{{ p()!.marginMinor | money }}</strong><span class="sm muted">{{ p()!.marginRatePct === null ? '' : p()!.marginRatePct + ' % du coût' }}</span></div>}
+          @if (p()!.access.stock && p()!.kind === 'product') {<div class="kpi"><span class="muted">Stock disponible</span><strong [class.neg]="(p()!.stockQty ?? 0) <= 0">{{ p()!.stockQty }}</strong>@if (p()!.minStock) {<span class="sm muted">minimum {{ p()!.minStock }}</span>}</div>}
+        </div>
+        <nav class="tabs" role="tablist" aria-label="Sections de la fiche article">
+          @for (t of tabs(); track t.key) {<button type="button" role="tab" class="tab" [class.on]="tab() === t.key" [attr.aria-selected]="tab() === t.key" (click)="go(t.key)"><app-icon [name]="t.icon" />{{ t.label }}</button>}
+        </nav>
+        <div class="panel" role="tabpanel">
+          @switch (tab()) {
+            @case ('general') {<app-tab-general [p]="p()!" (saved)="onProduct($event)" />}
+            @case ('packaging') {<app-tab-packaging [p]="p()!" (saved)="onProduct($event)" />}
+            @case ('prices') {<app-tab-prices [p]="p()!" (saved)="onProduct($event)" />}
+            @case ('stock') {<app-tab-stock [p]="p()!" (changed)="reload()" />}
+            @case ('customs') {<app-tab-customs [p]="p()!" (saved)="onProduct($event)" />}
+            @case ('transactions') {<app-tab-transactions [p]="p()!" />}
+            @case ('documents') {<app-tab-documents [p]="p()!" (changed)="reload()" />}
+            @case ('activities') {<app-tab-activities [p]="p()!" />}
+          }
+        </div>
       }
     </div>`,
-  styles: `.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px}.kpis .card{display:flex;flex-direction:column;gap:6px}.kpis strong{font-size:20px}
-    h3{margin:0 0 12px;font-size:16px}dl{margin:0;display:grid;grid-template-columns:170px 1fr;gap:8px}dt{color:var(--muted)}dd{margin:0}
-    .warn{background:var(--accent-50);border-color:var(--accent-300);margin-bottom:16px;display:flex;gap:8px;align-items:center}.serial-add{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}`,
+  styles: `.back{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;margin-bottom:12px;font-size:14px}.back:hover{color:var(--brand)}
+    .head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;border-top:3px solid var(--accent)}.id{flex:1;min-width:220px}.nm{display:flex;align-items:center;gap:12px;flex-wrap:wrap}h1{margin:0;font-size:22px;line-height:30px;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
+    .sub{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:14px;margin-top:4px}.code{font-weight:600;color:var(--brand)}.acts{display:flex;gap:8px;align-items:center}.danger{color:var(--danger)}
+    .banner{display:flex;gap:10px;align-items:flex-start;margin:12px 0 0;padding:10px 14px;border-radius:var(--r-md);border:1px solid var(--accent-300);background:var(--accent-50)}.banner.blocked{border-color:var(--danger-200);background:var(--danger-50)}
+    .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:16px 0}.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--shadow-sm)}.kpi strong{font-size:20px;font-variant-numeric:tabular-nums}.sm{font-size:12px}.neg{color:var(--danger)}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}.tab{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--border-strong);border-radius:999px;background:var(--surface);color:var(--text-2);font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:all var(--t-fast) var(--ease)}
+    .tab:hover{border-color:var(--brand);color:var(--brand)}.tab:focus-visible{outline:none;box-shadow:var(--ring)}.tab.on{background:var(--brand);border-color:var(--brand);color:#fff}.tab app-icon{--icon-size:1rem}
+    @media (max-width:600px){.kpis{grid-template-columns:1fr 1fr;gap:8px}.kpi{padding:10px 12px}.kpi strong{font-size:16px}.tabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;margin-right:-16px;padding-right:16px;scrollbar-width:thin}.tab{flex:none}h1{font-size:19px}.acts{width:100%;justify-content:flex-end}}`,
 })
 export class ProductDetail {
   id = input.required<string>();
-  private svc = inject(ProductService); private toast = inject(ToastService); private dialog = inject(MatDialog); private router = inject(Router);
-  p = signal<ProductDto | null>(null); serials = signal<SerialDto[]>([]); total = signal(0); page = signal(0);
-  newSerials = new FormControl('', { nonNullable: true, validators: Validators.required });
-  statusLabel = (s: string) => STATUS[s] ?? s;
-  ngOnInit() { this.load(); }
-  load() {
-    this.svc.get(this.id()).subscribe({
-      next: (p) => { this.p.set(p); if (p.hasSerial) this.loadSerials(); },
-      error: (e) => { this.toast.error(errorMessage(e)); this.router.navigateByUrl('/products'); },
-    });
-  }
-  loadSerials() { this.svc.serials(this.id(), this.page() + 1, 20).subscribe((r) => { this.serials.set(r.items); this.total.set(r.total); }); }
-  onPage(e: PageEvent) { this.page.set(e.pageIndex); this.loadSerials(); }
-  addSerials() {
-    const list = this.newSerials.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    if (!list.length) return;
-    this.svc.addSerials(this.id(), list).subscribe({ next: (r) => { this.toast.success(`${r.added} numéro(s) ajouté(s)`); this.newSerials.reset(''); this.loadSerials(); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
-  }
-  removeSerial(s: SerialDto) {
-    confirm(this.dialog, { title: 'Supprimer le numéro de série', message: s.serialNumber, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok &&
-      this.svc.removeSerial(this.id(), s.id).subscribe({ next: () => { this.toast.success('Supprimé'); this.loadSerials(); }, error: (e) => this.toast.error(errorMessage(e)) }));
-  }
-  toggle() { this.svc.setActive(this.id(), !this.p()!.isActive).subscribe({ next: (p) => { this.p.set({ ...this.p()!, ...p }); this.toast.success('Statut mis à jour'); }, error: (e) => this.toast.error(errorMessage(e)) }); }
-  duplicate() {
-    prompt(this.dialog, { title: 'Dupliquer l’article', label: 'Nouvelle référence (unique)', confirmLabel: 'Dupliquer' }).subscribe((ref) => {
-      if (ref) this.svc.duplicate(this.id(), ref).subscribe({ next: (n) => { this.toast.success('Article dupliqué'); this.router.navigate(['/products', n.id, 'edit']); }, error: (e) => this.toast.error(errorMessage(e)) });
-    });
-  }
-  remove() {
-    confirm(this.dialog, { title: 'Supprimer l’article', message: `Supprimer définitivement « ${this.p()!.name} » ? Préférez la désactivation si l’article a déjà servi.`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok &&
-      this.svc.remove(this.id()).subscribe({ next: () => { this.toast.success('Article supprimé'); this.router.navigateByUrl('/products'); }, error: (e) => this.toast.error(errorMessage(e)) }));
-  }
+  auth = inject(AuthService); actions = inject(ProductActions); private svc = inject(ProductService); private toast = inject(ToastService); private router = inject(Router); private route = inject(ActivatedRoute); private photos = inject(ProductPhotos);
+  p = signal<ProductDto | null>(null); private wanted = signal<string | null>(null); chip = STATUS_CHIP; help = STATUS_HELP;
+  canEdit = computed(() => this.auth.has('products:update') && this.p()?.status !== 'archived');
+  brandModel = () => [this.p()?.brand, this.p()?.model].filter((x) => !!x).join(' ');
+  statusActions = computed(() => { const p = this.p(); return p ? this.actions.statusActions(p) : []; });
+  /** Huit onglets ; Stock et Douane n'apparaissent que pour les utilisateurs autorisés (le serveur revérifie chaque accès). */
+  tabs = computed(() => {
+    const a = this.auth; const p = this.p();
+    const tx = ['purchases:view', 'quotations:view', 'proformas:view', 'invoices:view', 'deliveryNotes:view', 'inventory:view', 'imports:view', 'costCalculation:view'].some((x) => a.has(x));
+    return ([
+      { key: 'general', label: 'Général', icon: 'info', show: true }, { key: 'packaging', label: 'Dimension de Packaging et poids', icon: 'inventory_2', show: true }, { key: 'prices', label: 'Prix', icon: 'payments', show: true },
+      { key: 'stock', label: 'Stock', icon: 'warehouse', show: a.has('inventory:view') }, { key: 'customs', label: 'Douane', icon: 'account_balance', show: !!p?.access.customs },
+      { key: 'transactions', label: 'Transactions', icon: 'sync_alt', show: tx }, { key: 'documents', label: 'Documents', icon: 'folder', show: true }, { key: 'activities', label: 'Activités', icon: 'history', show: true },
+    ] as { key: TabKey; label: string; icon: string; show: boolean }[]).filter((t) => t.show);
+  });
+  /** Onglet demandé par l'URL, valable seulement si l'utilisateur y a droit (évalué après le chargement de l'article). */
+  tab = computed<TabKey>(() => { const t = this.wanted(); return (this.tabs().find((x) => x.key === t)?.key as TabKey | undefined) ?? 'general'; });
+  constructor() { this.route.queryParamMap.subscribe((q) => this.wanted.set(q.get('tab'))); }
+  ngOnInit() { this.load(true); }
+  load(first = false) { this.svc.get(this.id()).subscribe({ next: (p) => this.p.set(p), error: (e) => { this.toast.error(errorMessage(e)); if (first) this.router.navigateByUrl('/products'); } }); }
+  reload() { this.photos.forget(this.id()); this.load(); }
+  go(t: TabKey) { this.router.navigate([], { relativeTo: this.route, queryParams: { tab: t === 'general' ? null : t }, queryParamsHandling: 'merge', replaceUrl: true }); }
+  onProduct(p: ProductDto) { this.p.set(p); this.load(); }
+  changeStatus(a: StatusAction) { this.actions.changeStatus(this.p()!, a).subscribe({ next: (u) => u && this.onProduct(u), error: (e) => this.toast.error(errorMessage(e)) }); }
+  remove() { this.actions.remove(this.p()!).subscribe({ next: (ok) => ok && this.router.navigateByUrl('/products'), error: (e) => this.toast.error(errorMessage(e)) }); }
 }
