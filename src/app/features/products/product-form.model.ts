@@ -2,18 +2,19 @@ import { AbstractControl, FormBuilder, FormControl, ValidationErrors, ValidatorF
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { ProductDto } from '../../shared/models/api.models';
 
-export interface SupplierRef { id: string; name: string }
+import type { SupplierRef } from '../../shared/components/supplier-picker';
+export type { SupplierRef };
 const NGP_RE = /^[0-9A-Za-z .-]{0,20}$/;
 const pattern = (re: RegExp, key: string): ValidatorFn => (c: AbstractControl): ValidationErrors | null => (!c.value || re.test(String(c.value)) ? null : { [key]: true });
-const intMin1: ValidatorFn = (c) => (c.value === null || c.value === '' || (Number.isInteger(Number(c.value)) && Number(c.value) >= 1) ? null : { parcel: true });
 
-/** Volume d'un colis (m³) = L × l × h (mm) / 1 000 000 000 ; total = volume × colis seulement si les dimensions sont celles d'un colis. Le serveur recalcule toujours. */
-export function volumes(f: { lengthMm: number | null; widthMm: number | null; heightMm: number | null; parcelCount: number | null; dimensionsPerParcel: boolean }) {
+/**
+ * Volume total (m³) = longueur × largeur × hauteur (mm) / 1 000 000 000, affiché pendant la saisie ; null si incomplet.
+ * Le serveur recalcule toujours avec la même formule (12 décimales conservées).
+ */
+export function volumeM3(f: { lengthMm: number | null; widthMm: number | null; heightMm: number | null }): number | null {
   const [l, w, h] = [f.lengthMm, f.widthMm, f.heightMm].map((x) => (x === null || (x as unknown) === '' ? NaN : Number(x)));
-  if ([l, w, h].some((x) => !Number.isFinite(x))) return { unit: null as number | null, total: null as number | null, multiplied: false };
-  const unit = Math.round((l! * w! * h!) / 1_000_000_000 * 1e9) / 1e9; const n = f.parcelCount ? Number(f.parcelCount) : 0;
-  const multiplied = f.dimensionsPerParcel && n > 1;
-  return { unit, total: multiplied ? Math.round(unit * n * 1e9) / 1e9 : unit, multiplied };
+  if ([l, w, h].some((x) => !Number.isFinite(x) || x! < 0)) return null;
+  return Math.round(((l! * w! * h!) / 1_000_000_000) * 1e12) / 1e12;
 }
 
 /** Règles croisées : poids brut ≥ poids net ; prix minimum de vente ≤ prix de vente. */
@@ -29,11 +30,11 @@ export function buildProductForm(fb: FormBuilder, baseCurrency: string) {
   const dim = () => new FormControl<number | null>(null, [Validators.min(0), Validators.max(1e7)]);
   return fb.nonNullable.group({
     // 1. Général
-    reference: ['', [Validators.required, Validators.maxLength(60)]], name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(200)]], brand: ['', Validators.maxLength(80)], model: ['', Validators.maxLength(80)],
+    reference: ['', [Validators.required, Validators.maxLength(60)]], name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(200)]],
     familyId: [''], subId: [''], unitId: ['', Validators.required], kind: ['product' as 'product' | 'service'], description: ['', Validators.maxLength(2000)],
-    // 2. Packaging
+    // 2. Dimensions et poids (confirmDimensions : seulement pour une ancienne saisie « par colis »)
     lengthMm: dim(), widthMm: dim(), heightMm: dim(), netWeightKg: dim(), grossWeightKg: dim(), packType: [''], packTypeLabel: ['', Validators.maxLength(60)],
-    parcelCount: new FormControl<number | null>(null, [intMin1, Validators.max(1e6)]), dimensionsPerParcel: [true],
+    confirmDimensions: [false],
     // 3. Prix
     purchaseCurrency: [baseCurrency], purchasePrice: new FormControl<number | null>(null, Validators.min(0)), purchaseForeign: new FormControl<number | null>(null, Validators.min(0)), estimatedCost: new FormControl<number | null>(null, Validators.min(0)),
     mainSupplier: new FormControl<SupplierRef | null>(null), salePrice: new FormControl<number | null>(0, [Validators.required, Validators.min(0)]), vatRateCode: ['', Validators.required],
@@ -54,12 +55,12 @@ const t = (v: string) => v.trim();
 export function patchProductForm(form: ProductForm, p: ProductDto, ref: ReferenceDataService) {
   const pk = p.packaging; const c = p.customs;
   form.patchValue({
-    reference: p.reference, name: p.name, brand: p.brand ?? '', model: p.model ?? '', familyId: p.familyId ?? '', subId: p.subId ?? '', unitId: p.unitId, kind: p.kind, description: p.description ?? '',
+    reference: p.reference, name: p.name, familyId: p.familyId ?? '', subId: p.subId ?? '', unitId: p.unitId, kind: p.kind, description: p.description ?? '',
     lengthMm: pk?.lengthMm ?? null, widthMm: pk?.widthMm ?? null, heightMm: pk?.heightMm ?? null, netWeightKg: pk?.netWeightKg ?? null, grossWeightKg: pk?.grossWeightKg ?? null, packType: pk?.type ?? '', packTypeLabel: pk?.typeLabel ?? '',
-    parcelCount: pk?.parcelCount ?? null, dimensionsPerParcel: pk?.dimensionsPerParcel ?? true,
-    purchaseCurrency: p.purchaseCurrency ?? ref.data()?.baseCurrency ?? 'TND', purchasePrice: p.purchasePriceMinor == null ? null : ref.fromMinor(p.purchasePriceMinor),
+    confirmDimensions: false,
+    purchaseCurrency: p.purchaseCurrency ?? ref.data()?.baseCurrency ?? 'TND', purchasePrice: p.purchasePriceMinor == null || p.purchaseCurrency ? null : ref.fromMinor(p.purchasePriceMinor),
     purchaseForeign: p.purchasePriceForeignMinor == null || !p.purchaseCurrency ? null : p.purchasePriceForeignMinor / 10 ** ref.decimalsOf(p.purchaseCurrency),
-    estimatedCost: p.estimatedCostMinor == null ? null : ref.fromMinor(p.estimatedCostMinor), mainSupplier: p.mainSupplierId ? { id: p.mainSupplierId, name: p.mainSupplierName ?? '' } : null,
+    estimatedCost: p.estimatedCostMinor == null ? null : ref.fromMinor(p.estimatedCostMinor), mainSupplier: p.mainSupplierId ? { id: p.mainSupplierId, name: p.mainSupplierName ?? '', code: p.mainSupplierCode, archived: p.mainSupplierArchived } : null,
     salePrice: ref.fromMinor(p.salePriceMinor), vatRateCode: p.vatRateCode, minSalePrice: p.minSalePriceMinor == null ? null : ref.fromMinor(p.minSalePriceMinor), maxDiscountPct: p.maxDiscountPct,
     minStock: p.minStock, hasSerial: p.hasSerial,
     supplierHsCode: c?.supplierHsCode ?? '', tnHsCode: c?.tnHsCode ?? '', ddPct: c?.ddPct ?? null, fodecPct: c?.fodecPct ?? null, rpdPct: c?.rpdPct ?? null, originCountry: c?.originCountry ?? '', provenanceCountry: c?.provenanceCountry ?? '', specialRegulation: c?.specialRegulation ?? '',
@@ -72,12 +73,12 @@ const clear = (update: boolean) => (update ? null : undefined);
 
 export function generalBody(f: ProductForm, update: boolean) {
   const v = f.getRawValue(); const e = clear(update);
-  return { reference: t(v.reference), name: t(v.name), brand: t(v.brand) || e, model: t(v.model) || e, categoryId: v.subId || v.familyId || e, unitId: v.unitId, kind: v.kind, description: t(v.description) || (update ? '' : undefined) };
+  return { reference: t(v.reference), name: t(v.name), categoryId: v.familyId || e, subCategoryId: (v.familyId && v.subId) || e, unitId: v.unitId, kind: v.kind, description: t(v.description) || (update ? '' : undefined) };
 }
 export function packagingBody(f: ProductForm, update: boolean) {
   const v = f.getRawValue(); const e = clear(update);
   return { lengthMm: n(v.lengthMm) ?? e, widthMm: n(v.widthMm) ?? e, heightMm: n(v.heightMm) ?? e, netWeightKg: n(v.netWeightKg) ?? e, grossWeightKg: n(v.grossWeightKg) ?? e,
-    type: v.packType || e, typeLabel: v.packType === 'other' && t(v.packTypeLabel) ? t(v.packTypeLabel) : e, parcelCount: n(v.parcelCount) ?? e, dimensionsPerParcel: v.dimensionsPerParcel };
+    type: v.packType || e, typeLabel: v.packType === 'other' && t(v.packTypeLabel) ? t(v.packTypeLabel) : e, ...(update && v.confirmDimensions && { confirmDimensions: true }) };
 }
 export function customsBody(f: ProductForm, update: boolean) {
   const v = f.getRawValue(); const e = clear(update);
@@ -100,5 +101,5 @@ export function stockBody(f: ProductForm) { const v = f.getRawValue(); return { 
 export function fullBody(f: ProductForm, ref: ReferenceDataService, withPurchase: boolean, withCustoms: boolean) {
   const pk = packagingBody(f, false); const cu = customsBody(f, false); const has = (o: object) => Object.values(o).some((x) => x !== undefined && x !== null && x !== '');
   const strip = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, x]) => x !== undefined));
-  return { ...generalBody(f, false), ...pricesBody(f, ref, false, withPurchase), ...stockBody(f), ...(f.controls.kind.value === 'product' && has({ ...pk, dimensionsPerParcel: undefined }) && { packaging: strip(pk) }), ...(withCustoms && has(cu) && { customs: strip(cu) }) };
+  return { ...generalBody(f, false), ...pricesBody(f, ref, false, withPurchase), ...stockBody(f), ...(f.controls.kind.value === 'product' && has(pk) && { packaging: strip(pk) }), ...(withCustoms && has(cu) && { customs: strip(cu) }) };
 }

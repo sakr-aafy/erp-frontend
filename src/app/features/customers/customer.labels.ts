@@ -13,6 +13,10 @@ export const TYPE_ICON: Record<string, string> = { company: 'domain', walk_in: '
 export const METHOD_LABEL: Record<string, string> = { cash: 'Espèces', check: 'Chèque', transfer: 'Virement', card: 'Carte bancaire', draft: 'Traite', other: 'Autre' };
 export const PAYMENT_METHODS = Object.entries(METHOD_LABEL).map(([value, label]) => ({ value, label }));
 export const TERMS = [{ label: 'Comptant', days: 0 }, { label: '30 jours', days: 30 }, { label: '60 jours', days: 60 }];
+/** Formulations proposées en exemple pour les conditions personnalisées (jamais appliquées par défaut). */
+export const TERMS_EXAMPLES = [
+  '30 % à la commande et le solde avant la livraison', '50 % à la commande et 50 % à la livraison', '40 % à la commande, 30 % avant la livraison et 30 % après installation', 'Paiement à 90 jours', 'Paiement selon contrat',
+];
 export const KIND_LABEL: Record<string, string> = { quotation: 'Devis', proforma: 'Facture proforma', invoice: 'Facture', credit_note: 'Avoir', delivery_note: 'Bon de livraison' };
 export const KIND_ICON: Record<string, string> = { quotation: 'request_quote', proforma: 'description', invoice: 'receipt_long', credit_note: 'undo', delivery_note: 'local_shipping' };
 export const DOC_STATUS: Record<string, string> = {

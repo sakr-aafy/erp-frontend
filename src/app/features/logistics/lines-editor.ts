@@ -26,7 +26,8 @@ export type LineGroup = ReturnType<typeof lineGroup>;
         @for (g of array().controls; track $index; let i = $index) {<tr [formGroup]="g">
           <td><input class="w" formControlName="designation" aria-label="Désignation" [readonly]="!!g.controls.productId.value" />@if (g.controls.reference.value) {<small class="muted">{{ g.controls.reference.value }}</small>}</td>
           <td class="r"><input class="q" type="number" min="0.001" step="0.001" formControlName="quantity" aria-label="Quantité" /></td>
-          @if (opts().price) {<td class="r"><input class="p" type="number" min="0" [step]="1 / 10 ** dec()" formControlName="unitPrice" aria-label="Prix unitaire" /></td>}
+          @if (opts().price) {<td class="r"><input class="p" type="number" min="0" [step]="1 / 10 ** dec()" formControlName="unitPrice" aria-label="Prix unitaire" />
+            @if (manual().has(g) && g.controls.unitPrice.value === null) {<small class="need" role="status">Prix à saisir (aucun taux réel {{ manual().get(g) }})</small>}</td>}
           @if (opts().discount) {<td class="r"><input class="d" type="number" min="0" max="100" step="0.01" formControlName="discountPct" aria-label="Remise %" /></td>}
           @if (opts().vat) {<td><select formControlName="vatCode" aria-label="Code TVA"><option value="">(article)</option>@for (v of ref.vatRates(); track v.code) {<option [value]="v.code">{{ v.code }}</option>}</select></td>}
           @if (opts().serials) {<td><textarea rows="1" formControlName="serials" placeholder="un par ligne (si article suivi par série)" aria-label="Numéros de série"></textarea></td>}
@@ -35,16 +36,29 @@ export type LineGroup = ReturnType<typeof lineGroup>;
       <input matInput [formControl]="search" [matAutocomplete]="pa" placeholder="Référence ou désignation" />
       <mat-autocomplete #pa="matAutocomplete" (optionSelected)="add($event.option.value)">@for (p of options(); track p.id) {<mat-option [value]="p">{{ p.reference }} — {{ p.name }}</mat-option>}</mat-autocomplete></mat-form-field>`,
   styles: `.lines{width:100%;border-collapse:collapse;min-width:640px}.lines th,.lines td{padding:6px 8px;border-bottom:1px solid var(--erp-border);text-align:left;vertical-align:middle}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
-    .lines input,.lines select,.lines textarea{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;background:#fff}.w{width:100%;min-width:200px}.q{width:80px;text-align:right}.p{width:120px;text-align:right}.d{width:70px;text-align:right}`,
+    .lines input,.lines select,.lines textarea{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;background:#fff}.w{width:100%;min-width:200px}.need{display:block;margin-top:4px;font-size:11px;color:var(--accent-ink)}.q{width:80px;text-align:right}.p{width:120px;text-align:right}.d{width:70px;text-align:right}`,
 })
 export class LinesEditor {
   array = input.required<FormArray<LineGroup>>(); opts = input<LineOpts>({});
   private api = inject(Api); ref = inject(ReferenceDataService); private fb = inject(FormBuilder);
   dec = computed(() => this.opts().priceDecimals ?? this.ref.decimals());
-  search = new FormControl('', { nonNullable: true }); options = signal<{ id: string; reference: string; name: string; purchasePriceMinor: number; salePriceMinor: number; vatRateCode: string }[]>([]);
+  search = new FormControl('', { nonNullable: true }); options = signal<{ id: string; reference: string; name: string; purchasePriceMinor: number | null; salePriceMinor: number; vatRateCode: string; purchaseCurrency?: string | null }[]>([]);
+  /** Lignes sans prix proposé (article acheté en devise, sans taux réel) : devise concernée. */
+  manual = signal(new Map<LineGroup, string>());
   constructor() { this.search.valueChanges.pipe(debounceTime(250), switchMap((v) => (v.length ? this.api.get('/products', { q: v, limit: 10, active: 'true' }) : of(null))), takeUntilDestroyed()).subscribe((r) => { if (r) this.options.set(r.items); }); }
-  add(p: { id: string; reference: string; name: string; purchasePriceMinor: number; vatRateCode: string }) {
-    this.array().push(lineGroup(this.fb, { productId: p.id, reference: p.reference, designation: p.name, unitPrice: this.opts().priceDecimals ? 0 : this.ref.fromMinor(p.purchasePriceMinor), vatCode: '' }));
+  add(p: { id: string; reference: string; name: string; purchasePriceMinor: number | null; vatRateCode: string; purchaseCurrency?: string | null }) {
+    const inBase = !!this.opts().price && !this.opts().priceDecimals; // prix attendu dans la devise de base
+    const group = lineGroup(this.fb, { productId: p.id, reference: p.reference, designation: p.name, unitPrice: inBase && p.purchasePriceMinor !== null ? this.ref.fromMinor(p.purchasePriceMinor) : 0, vatCode: '' });
+    if (inBase && p.purchasePriceMinor === null && p.purchaseCurrency) {
+      // Le taux estimatif de la fiche n'est jamais proposé : prix au taux RÉEL du jour, sinon à saisir
+      group.controls.unitPrice.setValue(null as unknown as number);
+      const ask = () => this.manual.set(new Map(this.manual()).set(group, p.purchaseCurrency!));
+      this.api.get<{ unitPriceMinor: number | null }>(`/products/${p.id}/real-purchase-price`).subscribe({
+        next: (r) => { if (r.unitPriceMinor === null) ask(); else if (group.controls.unitPrice.value === null) group.controls.unitPrice.setValue(this.ref.fromMinor(r.unitPriceMinor)); },
+        error: ask,
+      });
+    }
+    this.array().push(group);
     this.search.setValue('');
   }
 }

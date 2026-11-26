@@ -7,6 +7,7 @@ import { errorMessage } from '../../../core/services/api';
 import { ReferenceDataService } from '../../../core/services/reference-data.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Icon } from '../../../shared/components/icon';
+import { PhoneLink } from '../../../shared/components/phone-link';
 import { Customer2 } from '../../../shared/models/api.models';
 import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import { CustomerFields } from '../customer-fields';
@@ -17,7 +18,7 @@ import { CustomerService } from '../customer.service';
 /** Onglet Informations : consultation par sections, ou modification (mêmes champs et mêmes validations que le formulaire de création). */
 @Component({
   selector: 'app-tab-info',
-  imports: [DatePipe, MatButtonModule, Icon, CustomerFields, MoneyPipe],
+  imports: [DatePipe, MatButtonModule, Icon, CustomerFields, MoneyPipe, PhoneLink],
   template: `
     @if (editing()) {
       @if (error()) {<div class="card err" role="alert"><app-icon name="error" />{{ error() }}</div>}
@@ -29,18 +30,21 @@ import { CustomerService } from '../customer.service';
         @else if (c().status === 'archived') {<span class="muted">Client archivé : réactivez-le pour le modifier.</span>}</div>
       <div class="grid">
         <section class="card"><h3>Identification</h3><dl>
-          <dt>Code client</dt><dd><strong class="code">{{ c().code ?? '—' }}</strong></dd><dt>Type de client</dt><dd>{{ type[c().type] }}</dd>
+          <dt>Type de client</dt><dd>{{ type[c().type] }}</dd><dt>Code client</dt><dd><strong class="code">{{ c().code ?? '—' }}</strong></dd>
           <dt>{{ c().type === 'company' ? 'Raison sociale' : 'Nom' }}</dt><dd>{{ c().name }}</dd><dt>Nom commercial</dt><dd>{{ v(c().tradeName) }}</dd>
-          @if (c().type === 'company') {<dt>Matricule fiscal</dt><dd>{{ v(c().taxId) }}</dd><dt>Registre de commerce</dt><dd>{{ v(c().registryNumber) }}</dd><dt>Secteur d’activité</dt><dd>{{ v(c().sector) }}</dd>}
+          @if (c().type === 'company') {<dt>Matricule fiscal</dt><dd>{{ v(c().taxId) }}</dd>}
           <dt>Statut</dt><dd><span class="chip {{ chip[c().status] }}">{{ status[c().status] }}</span>@if (c().statusReason) { <span class="muted">— {{ c().statusReason }}</span>}</dd>
           <dt>Créé le</dt><dd>{{ c().createdAt | date: 'dd/MM/yyyy' }}</dd></dl></section>
         <section class="card"><h3>Informations fiscales et conditions</h3><dl>
-          <dt>Retenue à la source</dt><dd>{{ c().subjectToWithholding ? 'Assujetti' : 'Non assujetti' }}</dd><dt>Timbre fiscal</dt><dd>{{ c().stampExempt ? 'Exonéré' : 'Applicable' }}</dd>
-          <dt>Conditions de paiement</dt><dd>{{ v(c().paymentTerms) }}@if (c().paymentDelayDays) { <span class="muted">({{ c().paymentDelayDays }} j)</span>}</dd>
+          <dt>Retenue à la source</dt><dd><span class="chip {{ c().subjectToWithholding ? 'ok' : 'off' }}">{{ c().subjectToWithholding ? 'Assujetti' : 'Non assujetti' }}</span></dd>
+          <dt>Exonéré du timbre fiscal</dt><dd><span class="chip {{ c().stampExempt ? 'warn' : 'off' }}">{{ c().stampExempt ? 'Oui' : 'Non' }}</span></dd>
+          <dt>Conditions de paiement</dt><dd><span class="pre">{{ v(c().paymentTerms) }}</span>@if (c().paymentTermsCustom) { <span class="chip warn">Personnalisées</span><br><span class="muted small">Échéances saisies sur chaque facture.</span>} @else if (c().paymentDelayDays) { <span class="muted">({{ c().paymentDelayDays }} j)</span>}</dd>
           <dt>Mode de paiement habituel</dt><dd>{{ c().paymentMethod ? method[c().paymentMethod!] : '—' }}</dd><dt>Remise habituelle</dt><dd>{{ c().discountPct }} %</dd>
           <dt>Plafond de crédit</dt><dd>{{ c().creditLimitMinor === null ? 'Illimité' : (c().creditLimitMinor | money) }}</dd></dl></section>
         <section class="card"><h3>Coordonnées</h3><dl>
-          <dt>Adresse</dt><dd>{{ v(addr()) }}</dd><dt>Téléphone</dt><dd>{{ v(c().phone) }}</dd><dt>Téléphone secondaire</dt><dd>{{ v(c().secondaryPhone) }}</dd><dt>E-mail</dt><dd>{{ v(c().email) }}</dd>
+          <dt>Téléphone</dt><dd>@if (c().phone) {<app-phone [info]="c().phoneInfo" [value]="c().phone" />} @else {—}</dd>
+          <dt>Téléphone secondaire</dt><dd>@if (c().secondaryPhone) {<app-phone [info]="c().secondaryPhoneInfo" [value]="c().secondaryPhone" />} @else {—}</dd>
+          <dt>E-mail</dt><dd>@if (c().email) {<a [href]="'mailto:' + c().email">{{ c().email }}</a>} @else {—}</dd><dt>Adresse</dt><dd>{{ v(addr()) }}</dd>
           <dt>Site Internet</dt><dd>@if (c().website) {<a [href]="c().website" target="_blank" rel="noopener noreferrer">{{ c().website }}</a>} @else {—}</dd></dl></section>
         <section class="card"><h3>Réseaux sociaux et localisation</h3><dl>
           <dt>Facebook</dt><dd>@if (c().social.facebook) {<a [href]="c().social.facebook" target="_blank" rel="noopener noreferrer">{{ c().social.facebook }}</a>} @else {—}</dd>
@@ -52,7 +56,7 @@ import { CustomerService } from '../customer.service';
     }`,
   styles: `.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}h2{margin:0;font-size:16px;font-weight:600}h3{margin:0 0 12px;font-size:15px;font-weight:600}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}dl{margin:0;display:grid;grid-template-columns:minmax(120px,40%) 1fr;gap:10px 16px}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
-    .code{color:var(--brand)}.notes{margin:0;white-space:pre-wrap}.bar{display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;padding:12px 0;background:var(--bg)}.err{color:var(--danger);display:flex;gap:8px;align-items:center;margin-bottom:12px;background:var(--danger-50);border-color:var(--danger-200)}
+    .code{color:var(--brand)}.pre{white-space:pre-wrap}.small{font-size:12px}.notes{margin:0;white-space:pre-wrap}.bar{display:flex;gap:8px;margin-top:16px;position:sticky;bottom:0;padding:12px 0;background:var(--bg)}.err{color:var(--danger);display:flex;gap:8px;align-items:center;margin-bottom:12px;background:var(--danger-50);border-color:var(--danger-200)}
     @media (max-width:520px){dl{grid-template-columns:1fr;gap:2px}dd{margin-bottom:8px}}`,
 })
 export class TabInfo {

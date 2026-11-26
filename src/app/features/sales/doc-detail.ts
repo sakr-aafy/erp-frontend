@@ -9,7 +9,9 @@ import { errorMessage } from '../../core/services/api';
 import { DownloadService } from '../../core/services/download.service';
 import { ToastService } from '../../core/services/toast.service';
 import { confirm } from '../../shared/components/confirm-dialog';
+import { AddressBody } from '../../shared/components/address-card';
 import { PageHeader } from '../../shared/components/page-header';
+import { AddressSnapshot } from '../../shared/models/api.models';
 import { prompt } from '../../shared/components/prompt-dialog';
 import { Skeleton } from '../../shared/components/skeleton';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
@@ -20,7 +22,7 @@ import { SalesService } from './sales.service';
 
 @Component({
   selector: 'app-doc-detail',
-  imports: [DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">
       @if (!d()) {<div class="card"><app-skeleton /></div>} @else {
@@ -53,6 +55,8 @@ import { SalesService } from './sales.service';
           @if (kind() !== 'delivery-notes') {<td class="r">{{ l.unitPriceMinor | money }}</td><td class="r">{{ l.discountPct || '' }}</td><td>{{ vatText(l.vat) }}</td><td class="r">{{ l.netHtMinor | money }}</td>}
           @if (showDelivered()) {<td class="r">{{ l.kind === 'service' ? '—' : (l.deliveredQty ?? 0) }}</td>}</tr>}</tbody></table></div></div>
 
+      @if (needsSchedule()) {<div class="card warn" role="status"><app-icon name="warning" /> Conditions personnalisées sans échéancier : modifiez la facture et saisissez les échéances réelles avant de la valider.</div>}
+
       @if (kind() !== 'delivery-notes') {
         <div class="bottom">
           @if (d()!.notes || d()!.terms) {<div class="card" style="flex:1;min-width:260px"><h3>Notes</h3><p>{{ d()!.notes }}</p>@if (d()!.terms) {<p class="muted">Conditions : {{ d()!.terms }}</p>}</div>}
@@ -73,6 +77,12 @@ import { SalesService } from './sales.service';
         </div>
       } @else {<div class="card" style="margin-top:16px"><span class="muted">Transporteur :</span> {{ d()!.carrier || '—' }} @if (d()!.notes) {<br><span class="muted">Notes :</span> {{ d()!.notes }}}</div>}
 
+      @if (delivery() || d()!.paymentTerms) {<div class="bottom">
+        @if (delivery(); as a) {<div class="card delivery" style="flex:1;min-width:280px"><h3>Adresse de livraison</h3><strong>{{ a.label }}</strong><app-address-body [a]="a" /></div>}
+        @if (d()!.paymentTerms) {<div class="card pay" style="flex:1;min-width:280px"><h3>Conditions de paiement</h3><p class="pre">{{ d()!.paymentTerms }}</p>
+          @if (d()!.paymentTermsCustom) {<p class="muted small">Conditions personnalisées : les échéances sont celles saisies dans l’échéancier.</p>}</div>}
+      </div>}
+
       @if (kind() === 'invoices' && d()!.status === 'validated' && d()!.type === 'invoice') {
         <div class="bottom">
           <div class="card" style="flex:1;min-width:300px"><h3>Échéancier</h3>
@@ -84,7 +94,7 @@ import { SalesService } from './sales.service';
       }
     </div>`,
   styles: `.status-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.info{background:var(--brand-50);border-color:var(--brand-200);margin-bottom:12px;display:flex;gap:8px;align-items:center}
-    .links{display:flex;gap:16px;flex-wrap:wrap}.links a{color:var(--brand)}h3{margin:0 0 12px;font-size:16px}.bottom{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:flex-start}
+    .links{display:flex;gap:16px;flex-wrap:wrap}.links a{color:var(--brand)}.delivery strong{display:block;margin-bottom:4px}.pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.small{font-size:12px;margin:8px 0 0}.warn{margin-top:12px;display:flex;gap:8px;align-items:center;background:var(--accent-50);border-color:var(--accent-300);color:var(--accent-ink)}h3{margin:0 0 12px;font-size:16px}.bottom{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:flex-start}
     .lines{width:100%;border-collapse:collapse;min-width:640px}.lines th,.lines td{padding:8px;border-bottom:1px solid var(--erp-border);text-align:left}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
     .totals div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.totals .b{font-weight:600;border-top:1px solid var(--erp-border);margin-top:4px;padding-top:6px}.totals .s{font-size:13px;color:var(--muted)}
     .inst{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--erp-border);align-items:center}.cancelled{text-decoration:line-through;opacity:.6}`,
@@ -100,6 +110,13 @@ export class DocDetail {
   vatText = (v: { regime: string; ratePct?: number }) => (v.regime === 'taxable' ? `${v.ratePct} %` : ({ zero: '0 %', exempt: 'exonéré', suspended: 'suspension' } as Record<string, string>)[v.regime]);
   title = () => { const d = this.d()!; const t = d.type === 'credit_note' ? 'Facture d’avoir' : this.cfg().singular.charAt(0).toUpperCase() + this.cfg().singular.slice(1); return `${t} ${d.number ?? '(brouillon)'}`; };
   sourceRoute = () => ({ quotation: '/quotations', proforma: '/proformas', invoice: '/invoices' } as Record<string, string>)[this.d()!.source!.type];
+  /** Adresse de livraison copiée sur le document (les documents antérieurs portent l'ancien champ du client). */
+  delivery = computed<AddressSnapshot | null>(() => {
+    const d = this.d(); if (!d) return null; if (d.deliveryAddress) return d.deliveryAddress;
+    const s = d.customer.shippingAddress;
+    return s && (s.street || s.city) ? { addressId: null, label: 'Adresse de livraison', street: s.street ?? '', city: s.city ?? null, postalCode: s.postalCode ?? null, country: s.country ?? null, contactName: null, contactPhone: null, contactPhoneInfo: null, mapsUrl: null, instructions: null } : null;
+  });
+  needsSchedule = () => { const d = this.d()!; return this.kind() === 'invoices' && d.status === 'draft' && d.type !== 'credit_note' && !!d.paymentTermsCustom && !d.schedule?.length; };
   showDelivered = () => this.kind() !== 'delivery-notes' && this.d()!.lines.some((l) => (l.deliveredQty ?? 0) > 0);
   canMail = () => this.can('update') && (this.kind() !== 'delivery-notes') && (this.kind() !== 'invoices' || this.d()!.status === 'validated');
 

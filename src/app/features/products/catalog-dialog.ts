@@ -1,10 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MAT_DIALOG_DATA, MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { Observable } from 'rxjs';
 import { AuthService } from '../../core/authentication/auth.service';
 import { errorMessage } from '../../core/services/api';
@@ -12,7 +11,8 @@ import { ToastService } from '../../core/services/toast.service';
 import { confirm } from '../../shared/components/confirm-dialog';
 import { Icon } from '../../shared/components/icon';
 import { prompt } from '../../shared/components/prompt-dialog';
-import { CategoryDto, UnitDto } from '../../shared/models/api.models';
+import { UnitDto } from '../../shared/models/api.models';
+import { CategoryTree } from './category-tree';
 import { ProductService, unitCodeFor } from './product.service';
 
 export interface CatalogDialogData { kind: 'category' | 'unit' }
@@ -20,31 +20,17 @@ export interface CatalogDialogData { kind: 'category' | 'unit' }
 /** Gestion rapide des catégories ou des unités de mesure (ajout, modification, suppression) depuis le formulaire d'article. */
 @Component({
   selector: 'app-catalog-dialog',
-  imports: [ReactiveFormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, Icon],
+  imports: [ReactiveFormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, Icon, CategoryTree],
   template: `
     <header class="head">
       <span class="badge"><app-icon [name]="data.kind === 'category' ? 'category' : 'straighten'" /></span>
       <div><h2 mat-dialog-title>{{ data.kind === 'category' ? 'Catégories' : 'Unités de mesure' }}</h2>
-        <p class="desc">{{ data.kind === 'category' ? 'Organisez votre catalogue en familles et sous-familles.' : 'Définissez les unités utilisées pour vos articles (pièce, kg, litre…).' }}</p></div>
-      <span class="count">{{ data.kind === 'category' ? cats().length : units().length }}</span>
+        <p class="desc">{{ data.kind === 'category' ? 'Organisez votre catalogue en catégories et sous-catégories.' : 'Définissez les unités utilisées pour vos articles (pièce, kg, litre…).' }}</p></div>
+      @if (data.kind === 'unit') {<span class="count">{{ units().length }}</span>}
     </header>
     <mat-dialog-content>
       @if (data.kind === 'category') {
-        @if (canCreate) {<form class="add" [formGroup]="catForm" (ngSubmit)="addCategory()">
-          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow"><mat-label>Nom</mat-label><input matInput formControlName="name" /></mat-form-field>
-          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow"><mat-label>Famille parente</mat-label><mat-select formControlName="parent"><mat-option value="">Nouvelle famille</mat-option>@for (f of families(); track f.id) {<mat-option [value]="f.id">{{ f.name }}</mat-option>}</mat-select></mat-form-field>
-          <button mat-flat-button color="primary" [disabled]="catForm.invalid"><app-icon name="add" />Ajouter</button></form>}
-        <div class="list">
-          @for (f of families(); track f.id) {
-            <div class="row fam"><app-icon name="category" class="lead" /><strong>{{ f.name }}</strong><span class="pill">{{ f.productCount }} article(s)</span><span class="spacer"></span>
-              @if (canUpdate) {<button mat-icon-button class="act" type="button" (click)="rename(f)" aria-label="Modifier {{ f.name }}"><app-icon name="edit" /></button>}
-              @if (canDelete) {<button mat-icon-button class="act del" type="button" (click)="removeCategory(f)" aria-label="Supprimer {{ f.name }}"><app-icon name="delete" /></button>}</div>
-            @for (s of subs(f.id); track s.id) {
-              <div class="row sub"><span class="branch"></span><span>{{ s.name }}</span><span class="pill">{{ s.productCount }} article(s)</span><span class="spacer"></span>
-                @if (canUpdate) {<button mat-icon-button class="act" type="button" (click)="rename(s)" aria-label="Modifier {{ s.name }}"><app-icon name="edit" /></button>}
-                @if (canDelete) {<button mat-icon-button class="act del" type="button" (click)="removeCategory(s)" aria-label="Supprimer {{ s.name }}"><app-icon name="delete" /></button>}</div>}
-          } @empty {<div class="empty"><app-icon name="category" /><p>Aucune catégorie pour le moment.</p></div>}
-        </div>
+        <app-category-tree (viewed)="close()" />
       } @else {
         @if (canCreate) {<form class="add" [formGroup]="unitForm" (ngSubmit)="addUnit()">
           <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow"><mat-label>Nom de l’unité</mat-label><input matInput formControlName="name" placeholder="ex. Pièce, Kilogramme, Litre" /></mat-form-field>
@@ -88,20 +74,13 @@ export class CatalogDialog {
   data = inject<CatalogDialogData>(MAT_DIALOG_DATA);
   private svc = inject(ProductService); private toast = inject(ToastService); private dialog = inject(MatDialog); private auth = inject(AuthService); private fb = inject(FormBuilder);
   canCreate = this.auth.has('products:create'); canUpdate = this.auth.has('products:update'); canDelete = this.auth.has('products:delete');
-  cats = signal<CategoryDto[]>([]); units = signal<UnitDto[]>([]);
-  catForm = this.fb.nonNullable.group({ name: ['', Validators.required], parent: [''] });
+  units = signal<UnitDto[]>([]);
   unitForm = this.fb.nonNullable.group({ name: ['', [Validators.required, Validators.maxLength(60)]] });
-  families = () => this.cats().filter((c) => !c.parentId);
-  subs = (id: string) => this.cats().filter((c) => c.parentId === id);
+  private ref = inject(MatDialogRef<CatalogDialog>);
   constructor() { this.load(); }
-  load() { if (this.data.kind === 'category') this.svc.categories().subscribe((c) => this.cats.set(c)); else this.svc.units().subscribe((u) => this.units.set(u)); }
+  load() { if (this.data.kind === 'unit') this.svc.units().subscribe((u) => this.units.set(u)); }
+  close() { this.ref.close(); }
   private done = (msg: string) => ({ next: () => { this.toast.success(msg); this.load(); }, error: (e: unknown) => this.toast.error(errorMessage(e)) });
-  addCategory() {
-    if (this.catForm.invalid) return; const { name, parent } = this.catForm.getRawValue();
-    this.svc.createCategory(name.trim(), parent || undefined).subscribe({ next: () => { this.catForm.controls.name.reset(''); this.toast.success('Catégorie ajoutée'); this.load(); }, error: (e) => this.toast.error(errorMessage(e)) });
-  }
-  rename(c: CategoryDto) { prompt(this.dialog, { title: 'Modifier la catégorie', label: 'Nom', value: c.name }).subscribe((n) => n && this.svc.renameCategory(c.id, n).subscribe(this.done('Catégorie modifiée'))); }
-  removeCategory(c: CategoryDto) { confirm(this.dialog, { title: 'Supprimer la catégorie', message: `Supprimer « ${c.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteCategory(c.id).subscribe(this.done('Catégorie supprimée'))); }
   addUnit() {
     if (this.unitForm.invalid) return; const name = this.unitForm.getRawValue().name.trim();
     if (this.units().some((u) => u.name.trim().toLowerCase() === name.toLowerCase())) { this.toast.error('Cette unité existe déjà'); return; }
@@ -110,4 +89,4 @@ export class CatalogDialog {
   editUnit(u: UnitDto) { prompt(this.dialog, { title: 'Modifier l’unité', label: 'Nom de l’unité', value: u.name }).subscribe((n) => n && this.svc.updateUnit(u.id, { name: n }).subscribe(this.done('Unité modifiée'))); }
   removeUnit(u: UnitDto) { confirm(this.dialog, { title: 'Supprimer l’unité', message: `Supprimer « ${u.name} » ?`, confirmLabel: 'Supprimer', danger: true }).subscribe((ok) => ok && this.svc.deleteUnit(u.id).subscribe(this.done('Unité supprimée'))); }
 }
-export const openCatalog = (d: MatDialog, kind: CatalogDialogData['kind']): Observable<unknown> => d.open(CatalogDialog, { data: { kind }, width: '640px', maxWidth: '94vw', autoFocus: 'dialog' }).afterClosed();
+export const openCatalog = (d: MatDialog, kind: CatalogDialogData['kind']): Observable<unknown> => d.open(CatalogDialog, { data: { kind }, width: kind === 'category' ? '760px' : '640px', maxWidth: '94vw', autoFocus: 'dialog' }).afterClosed();

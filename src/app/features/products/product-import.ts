@@ -39,6 +39,7 @@ import { ProductService } from './product.service';
           <p>{{ r.total }} ligne(s) — à créer : <strong>{{ r.toCreate }}</strong>, à mettre à jour : <strong>{{ r.toUpdate }}</strong>, erreurs : <strong [style.color]="r.errors.length ? 'var(--danger)' : 'var(--brand)'">{{ r.errors.length }}</strong></p>
           @if (r.applied) {<div class="ok"><app-icon name="check_circle" /> Import effectué : {{ r.created }} créé(s), {{ r.updated }} mis à jour.</div>}
           @else if (!r.errors.length) {<div class="ok"><app-icon name="info" /> Fichier valide. Cliquez sur « Importer » pour enregistrer.</div>}
+          @for (w of r.warnings ?? []; track w) {<div class="notice" role="status"><app-icon name="warning" />{{ w }}</div>}
           @if (r.errors.length) {<div class="table-wrap"><table mat-table [dataSource]="r.errors">
             <ng-container matColumnDef="row"><th mat-header-cell *matHeaderCellDef>Ligne</th><td mat-cell *matCellDef="let e">{{ e.row }}</td></ng-container>
             <ng-container matColumnDef="field"><th mat-header-cell *matHeaderCellDef>Colonne</th><td mat-cell *matCellDef="let e">{{ e.field }}</td></ng-container>
@@ -46,7 +47,7 @@ import { ProductService } from './product.service';
             <tr mat-header-row *matHeaderRowDef="['row','field','msg']"></tr><tr mat-row *matRowDef="let r; columns: ['row','field','msg']"></tr></table></div>}
         </div>}
     </div>`,
-  styles: `h3{margin:0 0 12px;font-size:16px}.row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.ok{display:flex;gap:8px;align-items:center;color:var(--brand);margin-bottom:12px}`,
+  styles: `.notice{display:flex;gap:8px;align-items:center;margin:8px 0;padding:8px 12px;border-radius:var(--r-md);background:var(--accent-50);border:1px solid var(--accent-300)}h3{margin:0 0 12px;font-size:16px}.row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.ok{display:flex;gap:8px;align-items:center;color:var(--brand);margin-bottom:12px}`,
 })
 export class ProductImport {
   private svc = inject(ProductService); private toast = inject(ToastService); private dl = inject(DownloadService);

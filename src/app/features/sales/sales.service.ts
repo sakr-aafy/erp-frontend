@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { environment } from '../../../environments/environment';
-import { Page } from '../../shared/models/api.models';
+import { Customer2, Page } from '../../shared/models/api.models';
 import { CalcPreview, DocKind, PaymentDto, SalesDoc, SourceLines } from './sales.models';
 
 @Injectable({ providedIn: 'root' })
@@ -25,7 +25,7 @@ export class SalesService {
   recordPayment(invoiceId: string, body: object) { return this.http.post<{ payment: PaymentDto; invoice: SalesDoc }>(`${this.api}/invoices/${invoiceId}/payments`, body); }
   cancelPayment(id: string, reason: string) { return this.http.post<PaymentDto>(`${this.api}/invoices/payments/${id}/cancel`, { reason }); }
   creditNote(invoiceId: string, reason: string) { return this.http.post<SalesDoc>(`${this.api}/invoices/${invoiceId}/credit-note`, { reason }); }
-  customer(id: string) { return this.http.get<{ id: string; name: string; taxId: string | null; paymentDelayDays: number }>(`${this.api}/customers/${id}`); }
+  customer(id: string) { return this.http.get<Customer2>(`${this.api}/customers/${id}`); }
   customers(q: string) { return this.http.get<Page<{ id: string; name: string; taxId: string | null; paymentDelayDays: number }>>(`${this.api}/customers`, { params: { q, limit: 10, status: 'active' } }); }
   products(q: string) { return this.http.get<Page<{ id: string; reference: string; name: string; salePriceMinor: number; vatRateCode: string; unitCode: string | null; kind: string }>>(`${this.api}/products`, { params: { q, limit: 10, active: 'true' } }); }
 }

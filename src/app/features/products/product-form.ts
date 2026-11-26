@@ -20,12 +20,12 @@ import { ProductService } from './product.service';
 import { ProductDto } from '../../shared/models/api.models';
 
 const GROUPS = [
-  { key: 'general', label: '1. Général', hint: 'Identification et caractéristiques', icon: 'info' }, { key: 'packaging', label: '2. Dimension de Packaging et poids', hint: 'Dimensions, emballage et poids', icon: 'inventory_2' },
+  { key: 'general', label: '1. Général', hint: 'Identification et caractéristiques', icon: 'info' }, { key: 'packaging', label: '2. Dimensions et Poids', hint: 'Volume, emballage et poids', icon: 'straighten' },
   { key: 'prices', label: '3. Prix', hint: 'Prix d’achat, de vente et marges', icon: 'payments' }, { key: 'stock', label: '4. Stock', hint: 'Seuil et traçabilité', icon: 'warehouse' }, { key: 'customs', label: '5. Douane', hint: 'Informations nécessaires à l’importation', icon: 'account_balance' },
 ];
 const LATER = [{ label: '6. Transactions', icon: 'sync_alt' }, { label: '7. Documents', icon: 'folder' }, { label: '8. Activités', icon: 'history' }];
 
-/** Création / modification d'un article : cinq groupes (Général, Packaging et poids, Prix, Stock, Douane) ; Transactions, Documents et Activités s'ouvrent après l'enregistrement. */
+/** Création / modification d'un article : cinq groupes (Général, Dimensions et Poids, Prix, Stock, Douane) ; Transactions, Documents et Activités s'ouvrent après l'enregistrement. */
 @Component({
   selector: 'app-product-form',
   imports: [ReactiveFormsModule, RouterLink, MatButtonModule, MatFormFieldModule, MatInputModule, MatSlideToggleModule, Icon, PageHeader, Skeleton, FieldsGeneral, FieldsPackaging, FieldsPrices, FieldsCustoms],
@@ -42,7 +42,7 @@ const LATER = [{ label: '6. Transactions', icon: 'sync_alt' }, { label: '7. Docu
         </nav>
         <div class="sections">
           <section id="g-general"><app-fields-general [form]="form" [preselectUnit]="!id()" /></section>
-          <section id="g-packaging"><app-fields-packaging [form]="form" /></section>
+          <section id="g-packaging"><app-fields-packaging [form]="form" [product]="product()" /></section>
           <section id="g-prices"><app-fields-prices [form]="form" [product]="product()" [purchase]="canPurchase()" /></section>
           <section id="g-stock">
             <form [formGroup]="form" class="card" (submit)="$event.preventDefault()">

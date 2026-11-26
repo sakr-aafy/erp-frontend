@@ -2,6 +2,7 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
+import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { AuthService } from '../../core/authentication/auth.service';
 import { errorMessage } from '../../core/services/api';
 import { ToastService } from '../../core/services/toast.service';
@@ -24,7 +25,7 @@ import { TabTransactions } from './tabs/tab-transactions';
 
 type TabKey = 'general' | 'packaging' | 'prices' | 'stock' | 'customs' | 'transactions' | 'documents' | 'activities';
 
-/** Fiche article : en-tête (photo principale), indicateurs réels et huit onglets (Général, Dimension de Packaging et poids, Prix, Stock, Douane, Transactions, Documents, Activités). L'onglet actif est dans l'URL (?tab=). */
+/** Fiche article : en-tête (photo principale), indicateurs réels et huit onglets (Général, Dimensions et Poids, Prix, Stock, Douane, Transactions, Documents, Activités). L'onglet actif est dans l'URL (?tab=). */
 @Component({
   selector: 'app-product-detail',
   imports: [RouterLink, MatButtonModule, MatMenuModule, Icon, Skeleton, MoneyPipe, ProductThumb, TabGeneral, TabPackaging, TabPrices, TabStock, TabCustoms, TabTransactions, TabDocuments, TabActivities],
@@ -36,7 +37,7 @@ type TabKey = 'general' | 'packaging' | 'prices' | 'stock' | 'customs' | 'transa
           <app-product-thumb [productId]="p()!.id" [photoId]="p()!.mainPhotoId" [kind]="p()!.kind" [alt]="p()!.name" [size]="72" />
           <div class="id">
             <div class="nm"><h1>{{ p()!.name }}</h1><span class="chip {{ chip[p()!.status] }}">{{ p()!.statusLabel }}</span></div>
-            <div class="sub"><span class="code">{{ p()!.reference }}</span>@if (p()!.familyName) {<span>·</span><span>{{ p()!.familyName }}@if (p()!.subName) { › {{ p()!.subName }}}</span>}@if (p()!.brand || p()!.model) {<span>·</span><span>{{ brandModel() }}</span>}
+            <div class="sub"><span class="code">{{ p()!.reference }}</span>@if (p()!.familyName) {<span>·</span><span>{{ p()!.familyName }}@if (p()!.subName) { › {{ p()!.subName }}}</span>}
               <span>·</span><span>{{ p()!.kind === 'service' ? 'Service' : 'Produit' }}</span></div>
           </div>
           <div class="acts">
@@ -52,9 +53,11 @@ type TabKey = 'general' | 'packaging' | 'prices' | 'stock' | 'customs' | 'transa
         </section>
         @if (p()!.status !== 'active') {<p class="banner {{ p()!.status }}" role="status"><app-icon [name]="p()!.status === 'blocked' ? 'block' : 'info'" /><span><strong>{{ p()!.statusLabel }}</strong>@if (p()!.statusReason) { — {{ p()!.statusReason }}}. {{ help[p()!.status] }}</span></p>}
         <div class="kpis">
-          @if (p()!.access.purchase) {<div class="kpi"><span class="muted">Prix d’achat HT</span><strong>{{ p()!.purchasePriceMinor | money }}</strong>@if (p()!.purchaseCurrency) {<span class="sm muted">{{ p()!.purchaseCurrency }} converti</span>}</div>}
+          @if (p()!.access.purchase) {<div class="kpi">
+            @if (p()!.estimateRate !== null) {<span class="muted">Prix d’achat estimé</span><strong>{{ p()!.estimatedPurchaseMinor | money }}</strong><span class="sm muted">{{ foreignText() }} au taux estimatif</span>}
+            @else {<span class="muted">Prix d’achat HT</span><strong>{{ p()!.purchasePriceMinor | money }}</strong>@if (p()!.purchaseCurrency) {<span class="sm muted">{{ foreignText() }} au taux réel enregistré</span>}}</div>}
           <div class="kpi"><span class="muted">Prix de vente HT</span><strong>{{ p()!.salePriceMinor | money }}</strong>@if (p()!.saleTtcMinor !== null) {<span class="sm muted">{{ p()!.saleTtcMinor | money }} TTC</span>}</div>
-          @if (p()!.access.cost) {<div class="kpi"><span class="muted">Coût de revient actuel</span><strong>{{ p()!.effectiveCostMinor | money }}</strong><span class="sm muted">{{ p()!.costPriceMinor === null ? (p()!.estimatedCostMinor === null ? 'basé sur le prix d’achat' : 'estimé') : 'calculé (CMP)' }}</span></div>
+          @if (p()!.access.cost) {<div class="kpi"><span class="muted">Coût de revient actuel</span><strong>{{ p()!.effectiveCostMinor | money }}</strong><span class="sm muted">{{ p()!.costPriceMinor === null ? (p()!.estimatedCostMinor !== null ? 'estimé (saisi)' : p()!.estimateRate !== null ? 'estimé au taux interne' : 'basé sur le prix d’achat') : 'calculé (CMP)' }}</span></div>
             <div class="kpi"><span class="muted">Marge HT</span><strong [class.neg]="(p()!.marginMinor ?? 0) < 0">{{ p()!.marginMinor | money }}</strong><span class="sm muted">{{ p()!.marginRatePct === null ? '' : p()!.marginRatePct + ' % du coût' }}</span></div>}
           @if (p()!.access.stock && p()!.kind === 'product') {<div class="kpi"><span class="muted">Stock disponible</span><strong [class.neg]="(p()!.stockQty ?? 0) <= 0">{{ p()!.stockQty }}</strong>@if (p()!.minStock) {<span class="sm muted">minimum {{ p()!.minStock }}</span>}</div>}
         </div>
@@ -89,14 +92,15 @@ export class ProductDetail {
   auth = inject(AuthService); actions = inject(ProductActions); private svc = inject(ProductService); private toast = inject(ToastService); private router = inject(Router); private route = inject(ActivatedRoute); private photos = inject(ProductPhotos);
   p = signal<ProductDto | null>(null); private wanted = signal<string | null>(null); chip = STATUS_CHIP; help = STATUS_HELP;
   canEdit = computed(() => this.auth.has('products:update') && this.p()?.status !== 'archived');
-  brandModel = () => [this.p()?.brand, this.p()?.model].filter((x) => !!x).join(' ');
+  private ref = inject(ReferenceDataService);
+  foreignText = () => { const p = this.p(); const c = p?.purchaseCurrency; if (!p || !c) return ''; const d = this.ref.decimalsOf(c); return `${((p.purchasePriceForeignMinor ?? 0) / 10 ** d).toLocaleString('fr-FR', { minimumFractionDigits: d })} ${c}`; };
   statusActions = computed(() => { const p = this.p(); return p ? this.actions.statusActions(p) : []; });
   /** Huit onglets ; Stock et Douane n'apparaissent que pour les utilisateurs autorisés (le serveur revérifie chaque accès). */
   tabs = computed(() => {
     const a = this.auth; const p = this.p();
     const tx = ['purchases:view', 'quotations:view', 'proformas:view', 'invoices:view', 'deliveryNotes:view', 'inventory:view', 'imports:view', 'costCalculation:view'].some((x) => a.has(x));
     return ([
-      { key: 'general', label: 'Général', icon: 'info', show: true }, { key: 'packaging', label: 'Dimension de Packaging et poids', icon: 'inventory_2', show: true }, { key: 'prices', label: 'Prix', icon: 'payments', show: true },
+      { key: 'general', label: 'Général', icon: 'info', show: true }, { key: 'packaging', label: 'Dimensions et Poids', icon: 'inventory_2', show: true }, { key: 'prices', label: 'Prix', icon: 'payments', show: true },
       { key: 'stock', label: 'Stock', icon: 'warehouse', show: a.has('inventory:view') }, { key: 'customs', label: 'Douane', icon: 'account_balance', show: !!p?.access.customs },
       { key: 'transactions', label: 'Transactions', icon: 'sync_alt', show: tx }, { key: 'documents', label: 'Documents', icon: 'folder', show: true }, { key: 'activities', label: 'Activités', icon: 'history', show: true },
     ] as { key: TabKey; label: string; icon: string; show: boolean }[]).filter((t) => t.show);

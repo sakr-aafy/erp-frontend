@@ -9,6 +9,7 @@ import { AuthService } from '../../../core/authentication/auth.service';
 import { errorMessage } from '../../../core/services/api';
 import { ToastService } from '../../../core/services/toast.service';
 import { confirm } from '../../../shared/components/confirm-dialog';
+import { AddressBody } from '../../../shared/components/address-card';
 import { PageHeader } from '../../../shared/components/page-header';
 import { prompt } from '../../../shared/components/prompt-dialog';
 import { Skeleton } from '../../../shared/components/skeleton';
@@ -17,13 +18,13 @@ import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 
 const LABELS: Record<string, string> = { draft: 'Brouillon', confirmed: 'Confirmée', partially_received: 'Partiellement reçue', received: 'Reçue', cancelled: 'Annulée', validated: 'Validée' };
 const good = (s: string) => ['confirmed', 'received', 'validated'].includes(s); const bad = (s: string) => s === 'cancelled';
-const common = `.status-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}h3{margin:0 0 12px;font-size:16px}.lines{width:100%;border-collapse:collapse;min-width:640px}.lines th,.lines td{padding:8px;border-bottom:1px solid var(--erp-border);text-align:left}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
+const common = `.addresses{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:16px;margin-bottom:16px}.addresses strong{display:block;margin-bottom:4px}.addresses p{margin:0}.status-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}h3{margin:0 0 12px;font-size:16px}.lines{width:100%;border-collapse:collapse;min-width:640px}.lines th,.lines td{padding:8px;border-bottom:1px solid var(--erp-border);text-align:left}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
   .totals div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.totals .b{font-weight:600;border-top:1px solid var(--erp-border);margin-top:4px;padding-top:6px}.bottom{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:flex-start}.info{background:var(--brand-50);border-color:var(--brand-200);margin-bottom:12px}.warn{background:var(--accent-50);border-color:var(--accent-300)}`;
 
 /** Fiche de commande d'achat : statut, lignes (reçu / facturé), actions, rapprochement commande / réception / facture. */
 @Component({
   selector: 'app-order-detail',
-  imports: [DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
       <app-page-header [title]="'Commande d’achat ' + d().number" [subtitle]="d().supplier?.name">
@@ -36,6 +37,10 @@ const common = `.status-row{display:flex;gap:10px;align-items:center;flex-wrap:w
       </app-page-header>
       <div class="status-row"><span class="chip" [class.ok]="good(d().status)" [class.off]="bad(d().status)">{{ label(d().status) }}</span><span class="muted">{{ d().orderDate | date: 'dd/MM/yyyy' : 'UTC' }}@if (d().expectedDate) { — livraison prévue le {{ d().expectedDate | date: 'dd/MM/yyyy' : 'UTC' }}}</span></div>
       @if (d().cancelReason) {<div class="card info">Annulée : {{ d().cancelReason }}</div>}
+      @if (d().supplierAddress || d().receivingAddress) {<div class="addresses">
+        <div class="card"><h3>Adresse du fournisseur</h3>@if (d().supplierAddress; as a) {<strong>{{ a.label }}</strong><app-address-body [a]="a" />} @else {<p class="muted">Non précisée</p>}</div>
+        <div class="card"><h3>Adresse de réception (notre entreprise)</h3>@if (d().receivingAddress; as r) {<strong>{{ r.name }}</strong><p class="muted">{{ r.address || 'Adresse non renseignée' }}</p>} @else {<p class="muted">Non précisée</p>}</div>
+      </div>}
       <div class="card"><div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th class="r">Commandé</th><th class="r">Reçu</th><th class="r">Facturé</th><th class="r">P.U. HT</th><th>TVA</th><th class="r">Total HT</th></tr></thead>
         <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}@if (l.reference) {<br><small class="muted">{{ l.reference }}</small>}</td><td class="r">{{ l.quantity }}</td><td class="r">{{ l.receivedQty }}</td><td class="r">{{ l.invoicedQty }}</td><td class="r">{{ l.unitPriceMinor | money }}</td><td>{{ l.vat?.code }}</td><td class="r">{{ l.netHtMinor | money }}</td></tr>}</tbody></table></div></div>
       <div class="bottom"><div class="card" style="flex:1;min-width:280px"><h3>Notes</h3><p>{{ d().notes || '—' }}</p></div>
@@ -59,7 +64,7 @@ export class OrderDetail {
 
 @Component({
   selector: 'app-receipt-detail',
-  imports: [DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
       <app-page-header [title]="'Réception ' + d().number" [subtitle]="d().supplier?.name">
@@ -70,6 +75,10 @@ export class OrderDetail {
       <div class="status-row"><span class="chip" [class.ok]="d().status === 'validated'">{{ label(d().status) }}</span><span class="muted">{{ d().receiptDate | date: 'dd/MM/yyyy' : 'UTC' }}</span>
         @if (d().purchaseOrderId) {<a [routerLink]="['/purchase-orders', d().purchaseOrderId]">Commande source</a>} @if (d().importFileId) {<a [routerLink]="['/imports', d().importFileId]">Dossier d’importation</a>}</div>
       @if (d().status === 'validated') {<div class="card info"><app-icon name="inventory" /> Réception validée : le stock a été mis à jour (mouvements consultables dans Stock › Mouvements).</div>}
+      @if (d().supplierAddress || d().receivingAddress) {<div class="addresses">
+        <div class="card"><h3>Adresse du fournisseur</h3>@if (d().supplierAddress; as a) {<strong>{{ a.label }}</strong><app-address-body [a]="a" />} @else {<p class="muted">Non précisée</p>}</div>
+        <div class="card"><h3>Adresse de réception (notre entreprise)</h3>@if (d().receivingAddress; as r) {<strong>{{ r.name }}</strong><p class="muted">{{ r.address || 'Adresse non renseignée' }}</p>} @else {<p class="muted">Non précisée</p>}</div>
+      </div>}
       <div class="card"><div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th class="r">Quantité</th><th class="r">Coût unitaire</th><th class="r">Frais annexes / unité</th><th class="r">Valeur</th><th>Séries</th></tr></thead>
         <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}</td><td class="r">{{ l.quantity }}</td><td class="r">{{ l.unitCostMinor | money }}</td><td class="r">{{ l.extraUnitCostMinor | money }}</td><td class="r">{{ l.valueMinor | money }}</td><td>{{ l.serials.join(', ') }}</td></tr>}</tbody></table></div></div>
     }</div>`,

@@ -2,12 +2,12 @@ import { Component, DestroyRef, computed, effect, inject, input, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { catchError, debounceTime, of, switchMap } from 'rxjs';
 import { AuthService } from '../../core/authentication/auth.service';
@@ -16,11 +16,14 @@ import { Icon } from '../../shared/components/icon';
 import { CategoryDto, ProductDto, UnitDto } from '../../shared/models/api.models';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
 import { openCatalog } from './catalog-dialog';
-import { ProductForm, volumes } from './product-form.model';
+import { ProductForm, volumeM3 } from './product-form.model';
 import { PACKAGING_TYPES, num } from './product.labels';
 import { ProductService } from './product.service';
 import { PricingPreview } from './product.types';
-import { SupplierPicker } from './supplier-picker';
+import { SupplierPicker } from '../../shared/components/supplier-picker';
+import { prompt } from '../../shared/components/prompt-dialog';
+import { errorMessage } from '../../core/services/api';
+import { ToastService } from '../../core/services/toast.service';
 
 const HEAD = `header{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--brand)}h3{margin:0;font-size:16px;font-weight:600;color:var(--text)}.sub{margin:-8px 0 14px;font-size:13px}.wide{grid-column:1/-1}.small{font-size:12px}
   .hint{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:var(--r-md);background:var(--brand-50);color:var(--text-2);font-size:13px;margin-top:8px}.hint app-icon{color:var(--brand);margin-top:1px;flex:none}
@@ -41,12 +44,10 @@ const HEAD = `header{display:flex;align-items:center;gap:10px;margin-bottom:14px
           <mat-hint>Unique par société (casse ignorée)</mat-hint>@if (c.reference.invalid && c.reference.touched) {<mat-error>Code requis (60 caractères max)</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Désignation (nom de l’article)</mat-label><input matInput formControlName="name" required />
           @if (c.name.invalid && c.name.touched) {<mat-error>2 caractères minimum</mat-error>}</mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Marque</mat-label><input matInput formControlName="brand" list="brands" /><datalist id="brands">@for (b of brands(); track b) {<option [value]="b"></option>}</datalist></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Modèle</mat-label><input matInput formControlName="model" /></mat-form-field>
         <mat-form-field appearance="outline">@if (canManage) {<button matPrefix mat-icon-button class="gear" type="button" (click)="manage('category')" aria-label="Gérer les catégories" matTooltip="Gérer les catégories"><app-icon name="settings" /></button>}
-          <mat-label>Catégorie</mat-label><mat-select formControlName="familyId" (selectionChange)="c.subId.setValue('')"><mat-option value="">Aucune</mat-option>@for (f of families(); track f.id) {<mat-option [value]="f.id">{{ f.name }}</mat-option>}</mat-select></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Sous-catégorie</mat-label><mat-select formControlName="subId" [disabled]="!subs().length"><mat-option value="">Aucune</mat-option>@for (s of subs(); track s.id) {<mat-option [value]="s.id">{{ s.name }}</mat-option>}</mat-select>
-          @if (c.familyId.value && !subs().length) {<mat-hint>Cette catégorie n’a pas de sous-catégorie</mat-hint>}</mat-form-field>
+          <mat-label>Catégorie</mat-label><mat-select formControlName="familyId" (selectionChange)="c.subId.setValue('')"><mat-option value="">Aucune</mat-option>@for (f of families(); track f.id) {<mat-option [value]="f.id">{{ f.name }}@if (f.isArchived) { (archivée)}</mat-option>}</mat-select></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Sous-catégorie</mat-label><mat-select formControlName="subId"><mat-option value="">Aucune</mat-option>@for (s of subs(); track s.id) {<mat-option [value]="s.id">{{ s.name }}@if (s.isArchived) { (archivée)}</mat-option>}</mat-select>
+          @if (!c.familyId.value) {<mat-hint>Choisissez d’abord une catégorie</mat-hint>} @else if (!subs().length) {<mat-hint>Cette catégorie n’a pas de sous-catégorie</mat-hint>} @else {<mat-hint>Facultative</mat-hint>}</mat-form-field>
         <mat-form-field appearance="outline">@if (canManage) {<button matPrefix mat-icon-button class="gear" type="button" (click)="manage('unit')" aria-label="Gérer les unités de vente" matTooltip="Gérer les unités de vente"><app-icon name="settings" /></button>}
           <mat-label>Unité de vente</mat-label><mat-select formControlName="unitId" required>@for (u of units(); track u.id) {<mat-option [value]="u.id">{{ u.name }}</mat-option>}</mat-select>
           @if (c.unitId.invalid && c.unitId.touched) {<mat-error>Unité requise (utilisez l’icône ⚙ pour en créer)</mat-error>}</mat-form-field>
@@ -58,15 +59,26 @@ const HEAD = `header{display:flex;align-items:center;gap:10px;margin-bottom:14px
 export class FieldsGeneral {
   form = input.required<ProductForm>(); preselectUnit = input(false);
   private svc = inject(ProductService); private dialog = inject(MatDialog); private auth = inject(AuthService);
-  cats = signal<CategoryDto[]>([]); units = signal<UnitDto[]>([]); brands = signal<string[]>([]);
+  cats = signal<CategoryDto[]>([]); units = signal<UnitDto[]>([]);
   canManage = this.auth.has('products:create') || this.auth.has('products:update') || this.auth.has('products:delete');
   get c() { return this.form().controls; }
-  families = computed(() => this.cats().filter((x) => !x.parentId));
-  private fam = signal('');
-  subs = computed(() => this.cats().filter((x) => x.parentId === this.fam()));
+  // Les catégories archivées ne sont proposées que si l'article les porte déjà
+  families = computed(() => this.cats().filter((x) => !x.parentId && (!x.isArchived || x.id === this.fam())));
+  private fam = signal(''); private sub = signal('');
+  subs = computed(() => this.cats().filter((x) => x.parentId === this.fam() && !!this.fam() && (!x.isArchived || x.id === this.sub())));
   private destroy = inject(DestroyRef);
-  constructor() { effect(() => { const f = this.form(); this.fam.set(f.controls.familyId.value); f.controls.familyId.valueChanges.pipe(takeUntilDestroyed(this.destroy)).subscribe((v) => this.fam.set(v)); }); }
-  ngOnInit() { this.load(); this.svc.brands().subscribe({ next: (b) => this.brands.set(b), error: () => undefined }); }
+  constructor() {
+    effect(() => {
+      const f = this.form(); this.fam.set(f.controls.familyId.value); this.sub.set(f.controls.subId.value);
+      f.controls.familyId.valueChanges.pipe(takeUntilDestroyed(this.destroy)).subscribe((v) => { this.fam.set(v); this.dropIncompatible(); });
+      f.controls.subId.valueChanges.pipe(takeUntilDestroyed(this.destroy)).subscribe((v) => this.sub.set(v));
+    });
+  }
+  /** Une sous-catégorie d'une autre catégorie est retirée. */
+  private dropIncompatible() {
+    const id = this.c.subId.value; if (id && this.cats().length && this.cats().find((x) => x.id === id)?.parentId !== this.c.familyId.value) this.c.subId.setValue('');
+  }
+  ngOnInit() { this.load(); }
   private load() {
     this.svc.categories().subscribe((c) => this.cats.set(c));
     this.svc.units().subscribe((u) => { this.units.set(u); if (this.preselectUnit() && u.length === 1 && !this.c.unitId.value) this.c.unitId.setValue(u[0]!.id); });
@@ -79,50 +91,52 @@ export class FieldsGeneral {
   }
 }
 
-// ======================= 2. PACKAGING ET POIDS =======================
+// ======================= 2. DIMENSIONS ET POIDS =======================
 @Component({
   selector: 'app-fields-packaging',
-  imports: [ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatSlideToggleModule, Icon],
+  imports: [ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, Icon],
   template: `
     <form [formGroup]="form()" (submit)="$event.preventDefault()" class="card">
-      <header><app-icon name="inventory_2" /><h3>Dimension de packaging et poids</h3></header>
-      <p class="muted sub">Dimensions de l’emballage, poids et volume (réutilisés par le module Importations). Facultatif ; sans objet pour un service.</p>
-      @if (isService()) {<div class="hint"><app-icon name="info" />Un service n’a ni emballage ni poids : cette section n’est pas utilisée.</div>} @else {
-      <div class="form-grid">
+      <header><app-icon name="straighten" /><h3>Dimensions et Poids</h3></header>
+      <p class="muted sub">Dimensions de l’article ou de son emballage et poids (repris par le module Importations). Facultatif ; sans objet pour un service.</p>
+      @if (isService()) {<div class="hint"><app-icon name="info" />Un service n’a ni dimensions ni poids : cette section n’est pas utilisée.</div>} @else {
+      @if (review(); as r) {<div class="warn review" role="alert"><app-icon name="warning" /><div><strong>Dimensions à vérifier.</strong> Ancienne saisie pour {{ r.parcelCount }} colis@if (r.previousTotalM3 !== null) { (volume total alors : {{ num(r.previousTotalM3, 9) }} m³)}. Indiquez les dimensions de l’article complet, ou confirmez-les.
+        <mat-checkbox formControlName="confirmDimensions">Je confirme que les dimensions ci-dessous sont celles de l’article complet</mat-checkbox></div></div>}
+      <div class="form-grid three">
         <mat-form-field appearance="outline"><mat-label>Longueur (mm)</mat-label><input matInput type="number" min="0" step="any" formControlName="lengthMm" />@if (c.lengthMm.invalid) {<mat-error>Valeur positive</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Largeur (mm)</mat-label><input matInput type="number" min="0" step="any" formControlName="widthMm" />@if (c.widthMm.invalid) {<mat-error>Valeur positive</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Hauteur (mm)</mat-label><input matInput type="number" min="0" step="any" formControlName="heightMm" />@if (c.heightMm.invalid) {<mat-error>Valeur positive</mat-error>}</mat-form-field>
+      </div>
+      <div class="vol" role="status" aria-live="polite"><app-icon name="calculate" /><div><span class="muted">Volume total (calculé, non modifiable)</span><strong>{{ v() === null ? 'Non calculé' : num(v(), 9) + ' m³' }}</strong></div>
+        <span class="muted small">{{ v() === null ? 'Renseignez les trois dimensions.' : 'L × l × h ÷ 1 000 000 000' }}</span></div>
+      <div class="form-grid three">
         <mat-form-field appearance="outline"><mat-label>Poids net (kg)</mat-label><input matInput type="number" min="0" step="any" formControlName="netWeightKg" />@if (c.netWeightKg.invalid) {<mat-error>Valeur positive</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Poids brut (kg)</mat-label><input matInput type="number" min="0" step="any" formControlName="grossWeightKg" />
           @if (c.grossWeightKg.invalid) {<mat-error>Valeur positive</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Type d’emballage</mat-label><mat-select formControlName="packType"><mat-option value="">Non précisé</mat-option>@for (t of types; track t.value) {<mat-option [value]="t.value">{{ t.label }}</mat-option>}</mat-select></mat-form-field>
         @if (c.packType.value === 'other') {<mat-form-field appearance="outline"><mat-label>Précisez le type d’emballage</mat-label><input matInput formControlName="packTypeLabel" /></mat-form-field>}
-        <mat-form-field appearance="outline"><mat-label>Nombre de colis</mat-label><input matInput type="number" min="1" step="1" formControlName="parcelCount" />@if (c.parcelCount.invalid) {<mat-error>Entier positif</mat-error>}</mat-form-field>
       </div>
-      @if (gross()) {<p class="neg" role="alert"><app-icon name="warning" /> Le poids brut ne peut pas être inférieur au poids net</p>}
-      <mat-slide-toggle formControlName="dimensionsPerParcel">Les dimensions sont celles d’<strong>un seul colis</strong> (tous les colis sont identiques)</mat-slide-toggle>
-      <div class="vol" role="status" aria-live="polite">
-        <div><span class="muted">Volume d’un colis</span><strong>{{ v().unit === null ? '—' : num(v().unit, 9) + ' m³' }}</strong></div>
-        <div><span class="muted">Volume total</span><strong>{{ v().total === null ? '—' : num(v().total, 9) + ' m³' }}</strong>@if (v().multiplied) {<span class="muted small">{{ num(v().unit, 9) }} × {{ c.parcelCount.value }} colis</span>}</div>
-      </div>
-      <p class="muted small">Volume (m³) = (longueur × largeur × hauteur en mm) / 1 000 000 000, recalculé automatiquement et vérifié par le serveur. Le volume total n’est multiplié par le nombre de colis que si les dimensions sont celles d’un colis.</p>}
+      @if (gross()) {<p class="neg" role="alert"><app-icon name="warning" /> Le poids brut ne peut pas être inférieur au poids net</p>}}
     </form>`,
-  styles: HEAD + `.vol{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0 8px}.vol div{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:var(--r-md);background:var(--brand-50)}.vol strong{font-size:20px;color:var(--brand);font-variant-numeric:tabular-nums}`,
+  styles: HEAD + `.three{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}.vol{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:4px 0 20px;padding:14px 16px;border-radius:var(--r-md);background:var(--brand-50);border-left:3px solid var(--brand)}
+    .vol>app-icon{color:var(--brand);--icon-size:1.5rem}.vol div{display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px}.vol strong{font-size:22px;color:var(--brand);font-variant-numeric:tabular-nums}
+    .review{align-items:flex-start;margin:0 0 16px}.review mat-checkbox{display:block;margin-top:6px}`,
 })
 export class FieldsPackaging {
-  form = input.required<ProductForm>(); types = PACKAGING_TYPES; num = num;
+  form = input.required<ProductForm>(); product = input<ProductDto | null>(null); types = PACKAGING_TYPES; num = num;
   get c() { return this.form().controls; }
   private tick = signal(0); private destroy = inject(DestroyRef);
   constructor() { effect(() => { const f = this.form(); f.valueChanges.pipe(debounceTime(0), takeUntilDestroyed(this.destroy)).subscribe(() => this.tick.update((x) => x + 1)); }); }
   isService = () => (this.tick(), this.c.kind.value === 'service');
+  review = () => this.product()?.packaging?.review ?? null;
   gross = () => (this.tick(), this.form().hasError('grossBelowNet'));
-  v = computed(() => { this.tick(); const x = this.form().getRawValue(); return volumes({ lengthMm: x.lengthMm, widthMm: x.widthMm, heightMm: x.heightMm, parcelCount: x.parcelCount, dimensionsPerParcel: x.dimensionsPerParcel }); });
+  v = computed(() => { this.tick(); return volumeM3(this.form().getRawValue()); });
 }
 
 // ======================= 3. PRIX =======================
 @Component({
   selector: 'app-fields-prices',
-  imports: [ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, Icon, SupplierPicker, MoneyPipe],
+  imports: [ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, Icon, SupplierPicker, MoneyPipe],
   template: `
     <form [formGroup]="form()" (submit)="$event.preventDefault()" class="stack">
       @if (!ref.vatRates().length) {<div class="warn" role="alert"><app-icon name="warning" />Aucune règle de TVA validée : validez-les dans Fiscalité avant d’enregistrer un article.</div>}
@@ -133,16 +147,25 @@ export class FieldsPackaging {
           <mat-form-field appearance="outline"><mat-label>Devise d’achat</mat-label><mat-select formControlName="purchaseCurrency">@for (cur of currencies(); track cur) {<mat-option [value]="cur">{{ cur }}{{ cur === base() ? ' (devise de base)' : '' }}</mat-option>}</mat-select></mat-form-field>
           @if (foreign()) {
             <mat-form-field appearance="outline"><mat-label>Prix d’achat HT chez le fournisseur ({{ c.purchaseCurrency.value }})</mat-label><input matInput type="number" min="0" step="any" formControlName="purchaseForeign" />@if (c.purchaseForeign.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
-            <div class="conv" role="status"><span class="muted">Contre-valeur en {{ base() }}</span><strong>{{ convertedMinor() === null ? '—' : (convertedMinor() | money) }}</strong>
-              <span class="muted small">@if (rate()) {1 {{ c.purchaseCurrency.value }} = {{ rate()!.rate }} {{ base() }} (taux du {{ rate()!.rateDate.slice(0, 10) }})} @else {Le taux de change enregistré est appliqué à l’enregistrement.}</span></div>
           } @else {
             <mat-form-field appearance="outline"><mat-label>Prix d’achat HT ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="purchasePrice" />@if (c.purchasePrice.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
           }
           <app-supplier-picker [control]="c.mainSupplier" label="Fournisseur habituel" />
-          <mat-form-field appearance="outline"><mat-label>Coût de revient estimé ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="estimatedCost" />
-            <mat-hint>Saisi à titre indicatif ; le coût réel vient des réceptions et importations</mat-hint></mat-form-field>
-          @if (product()?.access?.cost) {<div class="conv"><span class="muted">Coût de revient réel actuel</span><strong>{{ product()!.costPriceMinor === null ? 'Pas encore calculé' : (product()!.costPriceMinor | money) }}</strong><span class="muted small">Calculé par le module Coût de revient (CMP)</span></div>}
+          <mat-form-field appearance="outline"><mat-label>Coût de revient estimé saisi ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="estimatedCost" />
+            <mat-hint>{{ foreign() ? 'Vide : contre-valeur estimée' : 'Vide : prix d’achat' }}</mat-hint></mat-form-field>
         </div>
+        <div class="costs" role="status" aria-live="polite">
+          @if (estimateRate(); as rate) {
+            <div class="estimate"><span class="muted">Taux de change estimatif</span><strong>1 {{ c.purchaseCurrency.value }} = {{ num(rate) }} {{ ref.symbol() }}</strong>
+              @if (canEditRate) {<button mat-button type="button" class="edit-rate" (click)="editRate()"><app-icon name="edit" />Modifier le taux</button>}</div>
+            <div><span class="muted">Contre-valeur estimée</span><strong>{{ (preview()?.estimatedPurchaseMinor ?? null) === null ? '—' : (preview()!.estimatedPurchaseMinor | money) }}</strong><span class="muted small">Prix en {{ c.purchaseCurrency.value }} × taux estimatif</span></div>
+          } @else if (foreign()) {
+            <div><span class="muted">Contre-valeur en {{ base() }}</span><strong>{{ realRate() ? 'Au taux du ' + realRate()!.rateDate.slice(0, 10) : '—' }}</strong><span class="muted small">@if (realRate()) {1 {{ c.purchaseCurrency.value }} = {{ realRate()!.rate }} {{ base() }} (taux réel enregistré)} @else {Le dernier taux réel enregistré est appliqué à l’enregistrement.}</span></div>
+          }
+          <div><span class="muted">Coût de revient estimé</span><strong>{{ (preview()?.estimatedCostMinor ?? null) === null ? '—' : (preview()!.estimatedCostMinor | money) }}</strong><span class="muted small">{{ c.estimatedCost.value !== null && c.estimatedCost.value !== undefined && $any(c.estimatedCost.value) !== '' ? 'Montant saisi' : 'Aucun frais supplémentaire ajouté' }}</span></div>
+          @if (product()?.access?.cost) {<div class="real"><span class="muted">Coût de revient réel actuel</span><strong>{{ product()!.costPriceMinor === null ? 'Pas encore calculé' : (product()!.costPriceMinor | money) }}</strong><span class="muted small">Réceptions et importations (CMP), au taux réel</span></div>}
+        </div>
+        @if (estimateRate()) {<p class="note"><app-icon name="info" />Taux interne utilisé uniquement pour l’estimation du coût de revient.</p>}
       </section>}
       <section class="card">
         <header><app-icon name="payments" /><h3>Vente</h3></header>
@@ -153,7 +176,7 @@ export class FieldsPackaging {
           <mat-form-field appearance="outline"><mat-label>Prix minimum de vente HT ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="minSalePrice" />
             @if (c.minSalePrice.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Remise maximale autorisée (%)</mat-label><input matInput type="number" min="0" max="100" step="0.01" formControlName="maxDiscountPct" />@if (c.maxDiscountPct.invalid) {<mat-error>Entre 0 et 100 %</mat-error>}</mat-form-field>
-          <div class="conv" role="status"><span class="muted">Prix de vente TTC</span><strong>{{ preview() ? (preview()!.saleTtcMinor | money) : '—' }}</strong><span class="muted small">{{ preview() ? 'TVA ' + preview()!.vatRatePct + ' % (' + regime(preview()!.vatRegime) + ')' : 'Calculé par le moteur fiscal' }}</span></div>
+          <div class="conv" role="status"><span class="muted">Prix de vente TTC</span><strong>{{ (preview()?.saleTtcMinor ?? null) !== null ? (preview()!.saleTtcMinor | money) : '—' }}</strong><span class="muted small">{{ preview()?.vatRegime ? 'TVA ' + preview()!.vatRatePct + ' % (' + regime(preview()!.vatRegime!) + ')' : 'Calculé par le moteur fiscal' }}</span></div>
         </div>
         @if (minAbove()) {<p class="neg" role="alert"><app-icon name="warning" /> Le minimum ne peut pas dépasser le prix de vente</p>}
         @if (preview()?.margins; as m) {
@@ -163,12 +186,15 @@ export class FieldsPackaging {
             <div><span class="muted">Taux de marque (sur prix de vente)</span><strong>{{ m.markPct === null ? '—' : m.markPct + ' %' }}</strong></div>
             <div><span class="muted">Marge TTC (indicative)</span><strong [class.neg]="m.marginTtcMinor < 0">{{ m.marginTtcMinor | money }}</strong><span class="muted small">{{ m.marginTtcRatePct === null ? '' : m.marginTtcRatePct + ' %' }}</span></div>
           </div>
-          <p class="muted small">Marge HT = prix de vente HT − coût de revient. Marge TTC indicative = prix TTC − (coût + TVA sur coût) : la TVA n’est jamais comptée comme un bénéfice (formule à valider avec le comptable). Coût retenu : réel, sinon estimé, sinon prix d’achat.</p>
+          <p class="muted small">Marge HT = prix de vente HT − coût de revient. Marge TTC indicative = prix TTC − (coût + TVA sur coût) : la TVA n’est jamais comptée comme un bénéfice (formule à valider avec le comptable). Coût retenu : coût réel, sinon coût de revient estimé.</p>
           @if (preview()!.belowCost) {<div class="warn" role="alert"><app-icon name="warning" />Le prix de vente est inférieur au coût de revient.</div>}
         }
       </section>
     </form>`,
   styles: HEAD + `.stack{display:flex;flex-direction:column;gap:16px}.conv{display:flex;flex-direction:column;gap:2px;justify-content:center;padding:10px 14px;border-radius:var(--r-md);background:var(--brand-50);min-height:56px}.conv strong{font-size:18px;color:var(--brand);font-variant-numeric:tabular-nums}
+    .costs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px}.costs>div{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--border)}
+    .costs strong{font-size:18px;font-variant-numeric:tabular-nums}.costs .estimate{background:var(--accent-50);border-color:var(--accent-300)}.costs .real{background:var(--brand-50);border-color:var(--brand-200)}.costs .real strong{color:var(--brand)}.edit-rate{align-self:flex-start;margin:2px 0 -4px -8px}
+    .note{display:flex;gap:8px;align-items:center;margin:10px 0 0;font-size:12px;color:var(--muted)}.note app-icon{color:var(--brand)}
     .margins{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:16px}.margins div{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r-md)}.margins strong{font-size:18px;font-variant-numeric:tabular-nums}`,
 })
 export class FieldsPrices {
@@ -177,29 +203,54 @@ export class FieldsPrices {
   get c() { return this.form().controls; }
   base = computed(() => this.ref.data()?.baseCurrency ?? 'TND');
   currencies = computed(() => [this.base(), ...(this.ref.data()?.currencies ?? []).map((x) => x.code).filter((x) => x !== this.base())]);
-  rate = signal<{ rate: number; rateDate: string } | null>(null); preview = signal<PricingPreview | null>(null);
-  private cur = signal(''); private foreignVal = signal<number | null>(null);
+  realRate = signal<{ rate: number; rateDate: string } | null>(null); preview = signal<PricingPreview | null>(null);
+  private cur = signal('');
   foreign = computed(() => !!this.cur() && this.cur() !== this.base());
+  /** Taux estimatif de la société pour la devise choisie (EUR) ; null pour les autres devises. */
+  estimateRate = computed(() => this.ref.data()?.estimateRates?.find((r) => r.currency === this.cur() && r.targetCurrency === this.base())?.rate ?? null);
+  canPurchase = () => this.product()?.access?.purchase ?? this.purchase();
+  canEditRate = this.auth.has('settings:update'); num = num;
+  private dialog = inject(MatDialog); private toast = inject(ToastService);
+  editRate() {
+    const currency = this.cur(); const current = this.estimateRate();
+    prompt(this.dialog, { title: 'Taux de change estimatif', label: `Valeur de 1 ${currency} en ${this.base()}`, value: String(current ?? '').replace('.', ','), confirmLabel: 'Enregistrer' }).subscribe((answer) => {
+      if (answer === undefined) return;
+      const rate = Number(String(answer).trim().replace(',', '.'));
+      if (!(rate > 0)) { this.toast.error('Saisissez un taux positif, par exemple 3,5.'); return; }
+      this.svc.saveEstimateRate(currency, rate).subscribe({
+        next: () => { this.toast.success('Taux estimatif mis à jour'); this.ref.load$().subscribe(() => this.form().updateValueAndValidity({ emitEvent: true })); },
+        error: (e) => this.toast.error(errorMessage(e)),
+      });
+    });
+  }
   private tick = signal(0); minAbove = () => (this.tick(), this.form().hasError('minAboveSale'));
   step = () => 1 / 10 ** this.ref.decimals();
   regime = (r: string) => ({ taxable: 'taxable', zero: 'taux zéro', exempt: 'exonéré', suspended: 'suspension' } as Record<string, string>)[r] ?? r;
   vatText = (v: { regime: string; ratePct: number }) => (v.regime === 'taxable' ? `${v.ratePct} %` : ({ zero: '0 % (taux zéro)', exempt: 'exonéré', suspended: 'suspension' } as Record<string, string>)[v.regime]);
-  convertedMinor = computed(() => { const r = this.rate(); const f = this.foreignVal(); if (!r || f === null || !this.foreign()) return null; return Math.round(f * r.rate * 10 ** this.ref.decimals()); });
   constructor() {
     effect(() => {
-      const f = this.form(); this.cur.set(f.controls.purchaseCurrency.value); this.foreignVal.set(f.controls.purchaseForeign.value === null ? null : Number(f.controls.purchaseForeign.value));
+      const f = this.form(); this.cur.set(f.controls.purchaseCurrency.value);
       f.controls.purchaseCurrency.valueChanges.pipe(takeUntilDestroyed(this.destroy)).subscribe((v) => { this.cur.set(v); this.loadRate(v); });
-      f.controls.purchaseForeign.valueChanges.pipe(takeUntilDestroyed(this.destroy)).subscribe((v) => this.foreignVal.set(v === null || (v as unknown) === '' ? null : Number(v)));
       f.valueChanges.pipe(takeUntilDestroyed(this.destroy)).subscribe(() => this.tick.update((x) => x + 1));
       f.valueChanges.pipe(debounceTime(350), switchMap(() => {
-        const v = f.getRawValue(); const code = v.vatRateCode; const sale = this.ref.toMinor(Number(v.salePrice) || 0); if (!code) return of(null);
-        const pr = this.product(); const cost = pr?.costPriceMinor ?? (v.estimatedCost !== null && (v.estimatedCost as unknown) !== '' ? this.ref.toMinor(Number(v.estimatedCost)) : this.foreign() ? this.convertedMinor() : (v.purchasePrice !== null && (v.purchasePrice as unknown) !== '' ? this.ref.toMinor(Number(v.purchasePrice)) : null));
-        return this.svc.pricingPreview({ salePriceMinor: sale, vatRateCode: code, ...(this.auth.has('costCalculation:view') && cost !== null && { costMinor: cost }) }).pipe(catchError(() => of(null)));
+        const v = f.getRawValue(); const code = v.vatRateCode; const sale = Math.max(0, this.ref.toMinor(Number(v.salePrice) || 0));
+        // Contre-valeur, coût estimé et marges calculés par le serveur (mêmes fonctions qu'à l'enregistrement)
+        const pr = this.product(); const filled = (x: unknown) => x !== null && x !== undefined && x !== '';
+        const cur = v.purchaseCurrency; const isForeign = !!cur && cur !== this.base();
+        return this.svc.pricingPreview({ salePriceMinor: sale, ...(code && { vatRateCode: code }), ...(pr?.costPriceMinor != null && { costMinor: pr.costPriceMinor }),
+          ...(this.canPurchase() && { ...(filled(v.estimatedCost) && { estimatedCostMinor: this.ref.toMinor(Number(v.estimatedCost)) }),
+            ...(isForeign ? { purchaseCurrency: cur, ...(filled(v.purchaseForeign) && Number(v.purchaseForeign) >= 0 && { purchasePriceForeignMinor: Math.round(Number(v.purchaseForeign) * 10 ** this.ref.decimalsOf(cur)) }) }
+              : filled(v.purchasePrice) && { purchasePriceMinor: this.ref.toMinor(Number(v.purchasePrice)) }) }) }).pipe(catchError(() => of(null)));
       }), takeUntilDestroyed(this.destroy)).subscribe((p) => this.preview.set(p));
       queueMicrotask(() => { f.updateValueAndValidity({ emitEvent: true }); this.loadRate(f.controls.purchaseCurrency.value); });
     });
   }
-  private loadRate(cur: string) { if (!cur || cur === this.base() || !this.auth.has('imports:view')) { this.rate.set(null); return; } this.svc.rate(cur).subscribe({ next: (r) => this.rate.set(r), error: () => this.rate.set(null) }); }
+  /** Taux réel affiché pour information, uniquement pour les devises sans taux estimatif. */
+  private loadRate(cur: string) {
+    this.realRate.set(null);
+    if (!cur || cur === this.base() || this.estimateRate() !== null || !this.auth.has('imports:view')) return;
+    this.svc.rate(cur).subscribe({ next: (r) => this.realRate.set(r), error: () => this.realRate.set(null) });
+  }
 }
 
 // ======================= 5. DOUANE =======================

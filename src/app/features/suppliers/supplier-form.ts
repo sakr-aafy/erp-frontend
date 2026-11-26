@@ -19,13 +19,14 @@ import { SupplierService } from './supplier.service';
   imports: [ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatSlideToggleModule, MatButtonModule, PageHeader, Skeleton, ContactsEditor],
   template: `
     <div class="page">
-      <app-page-header [title]="id() ? 'Modifier le fournisseur' : 'Nouveau fournisseur'" subtitle="Le matricule fiscal doit être unique. Sans seuil, les commandes ne sont jamais bloquées (sauf seuil global des paramètres)." />
+      <app-page-header [title]="id() ? 'Modifier le fournisseur' : 'Nouveau fournisseur'" subtitle="Le code fournisseur est attribué automatiquement. Le matricule fiscal doit être unique. Sans seuil, les commandes ne sont jamais bloquées (sauf seuil global des paramètres)." />
       @if (loading()) {<div class="card"><app-skeleton /></div>} @else {
       <form [formGroup]="form" (ngSubmit)="save()">
         @if (error()) {<div class="card" style="color:var(--danger);margin-bottom:16px" role="alert">{{ error() }}</div>}
         <div class="card" style="margin-bottom:16px"><h3>Identification</h3><div class="form-grid">
           <mat-form-field appearance="outline"><mat-label>Raison sociale</mat-label><input matInput formControlName="name" />
             @if (form.controls.name.invalid && form.controls.name.touched) {<mat-error>2 caractères minimum</mat-error>}</mat-form-field>
+          <mat-form-field appearance="outline"><mat-label>Nom commercial</mat-label><input matInput formControlName="tradeName" maxlength="150" /></mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Matricule fiscal</mat-label><input matInput formControlName="taxId" /></mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Téléphone</mat-label><input matInput formControlName="phone" /></mat-form-field>
           <mat-form-field appearance="outline"><mat-label>E-mail</mat-label><input matInput type="email" formControlName="email" />
@@ -66,7 +67,7 @@ export class SupplierForm {
   ref = inject(ReferenceDataService);
   contacts: FormArray<ContactGroup> = this.fb.array<ContactGroup>([]);
   form = this.fb.nonNullable.group({
-    name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(150)]], taxId: [''], phone: [''], email: ['', Validators.email],
+    name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(150)]], tradeName: ['', Validators.maxLength(150)], taxId: [''], phone: [''], email: ['', Validators.email],
     address: this.fb.nonNullable.group({ street: [''], city: [''], postalCode: [''], country: [''] }),
     paymentTerms: [''], paymentDelayDays: [0, [Validators.min(0), Validators.max(365)]], leadTimeDays: [null as number | null, [Validators.min(0), Validators.max(1000)]],
     blockThreshold: [null as number | null, Validators.min(0)], isForeign: [false], currency: [''], notes: [''],
@@ -79,7 +80,7 @@ export class SupplierForm {
     this.loading.set(true);
     this.svc.get(id).subscribe({
       next: (c) => {
-        this.form.patchValue({ name: c.name, taxId: c.taxId ?? '', phone: c.phone ?? '', email: c.email ?? '', address: { street: c.address.street ?? '', city: c.address.city ?? '', postalCode: c.address.postalCode ?? '', country: c.address.country ?? '' },
+        this.form.patchValue({ name: c.name, tradeName: c.tradeName ?? '', taxId: c.taxId ?? '', phone: c.phone ?? '', email: c.email ?? '', address: { street: c.address.street ?? '', city: c.address.city ?? '', postalCode: c.address.postalCode ?? '', country: c.address.country ?? '' },
           paymentTerms: c.paymentTerms ?? '', paymentDelayDays: c.paymentDelayDays, leadTimeDays: c.leadTimeDays, blockThreshold: c.blockThresholdMinor == null ? null : this.ref.fromMinor(c.blockThresholdMinor),
           isForeign: c.isForeign, currency: c.currency ?? '', notes: c.notes ?? '' });
         c.contacts.forEach((k) => this.contacts.push(contactGroup(this.fb, k)));
@@ -95,7 +96,7 @@ export class SupplierForm {
     this.saving.set(true); this.error.set('');
     const v = this.form.getRawValue();
     const body = {
-      name: v.name, taxId: v.taxId || undefined, phone: v.phone || undefined, email: v.email || undefined, address: v.address, paymentTerms: v.paymentTerms || undefined,
+      name: v.name, tradeName: v.tradeName.trim() || undefined, taxId: v.taxId || undefined, phone: v.phone || undefined, email: v.email || undefined, address: v.address, paymentTerms: v.paymentTerms || undefined,
       paymentDelayDays: Number(v.paymentDelayDays) || 0,
       leadTimeDays: v.leadTimeDays === null || (v.leadTimeDays as unknown) === '' ? null : Number(v.leadTimeDays),
       blockThresholdMinor: v.blockThreshold === null || (v.blockThreshold as unknown) === '' ? null : this.ref.toMinor(Number(v.blockThreshold)),
@@ -111,7 +112,7 @@ export class SupplierForm {
   /** À la modification, un champ vidé doit être effacé côté serveur (null), pas ignoré. */
   private nullify(b: Record<string, unknown>) {
     const out = { ...b };
-    for (const k of ['taxId', 'phone', 'email', 'paymentTerms', 'notes']) if (out[k] === undefined) out[k] = null;
+    for (const k of ['tradeName', 'taxId', 'phone', 'email', 'paymentTerms', 'notes']) if (out[k] === undefined) out[k] = null;
     return out;
   }
 }

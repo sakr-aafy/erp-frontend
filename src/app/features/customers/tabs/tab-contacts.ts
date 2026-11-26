@@ -7,6 +7,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { confirm } from '../../../shared/components/confirm-dialog';
 import { EmptyState } from '../../../shared/components/empty-state';
 import { Icon } from '../../../shared/components/icon';
+import { PhoneLink } from '../../../shared/components/phone-link';
 import { RowAction, RowActions } from '../../../shared/components/row-actions';
 import { Contact, Customer2 } from '../../../shared/models/api.models';
 import { openContactDialog } from '../customer-dialogs';
@@ -15,7 +16,7 @@ import { CustomerService } from '../customer.service';
 /** Onglet Contacts : plusieurs personnes de contact, un seul contact principal à tout instant (garanti côté serveur). */
 @Component({
   selector: 'app-tab-contacts',
-  imports: [MatButtonModule, Icon, EmptyState, RowActions],
+  imports: [MatButtonModule, Icon, EmptyState, RowActions, PhoneLink],
   template: `
     <div class="top"><h2>Personnes de contact</h2>@if (canEdit()) {<button mat-flat-button color="primary" type="button" (click)="add()"><app-icon name="add" />Ajouter</button>}</div>
     @if (!c().contacts.length) {<div class="card"><app-empty-state icon="group" message="Aucun contact enregistré pour ce client."/></div>}
@@ -24,14 +25,14 @@ import { CustomerService } from '../customer.service';
         <span class="av">{{ initials(k.name) }}</span>
         <div class="body"><div class="nm"><strong>{{ k.name }}</strong>@if (k.isPrimary) {<span class="chip ok">Contact principal</span>}</div>
           @if (k.role) {<span class="muted">{{ k.role }}</span>}
-          <div class="lines">@if (k.phone) {<a [href]="'tel:' + k.phone"><app-icon name="phone" />{{ k.phone }}</a>}@if (k.email) {<a [href]="'mailto:' + k.email"><app-icon name="mail" />{{ k.email }}</a>}</div></div>
+          <div class="lines">@if (k.phone) {<span class="tel"><app-icon name="phone" /><app-phone [info]="k.phoneInfo" [value]="k.phone" /></span>}@if (k.email) {<a [href]="'mailto:' + k.email"><app-icon name="mail" />{{ k.email }}</a>}</div></div>
         @if (canEdit()) {<app-row-actions [actions]="actionsOf(k)" />}
       </article>}</div>
     <p class="muted small">Un client peut avoir plusieurs contacts ; un seul est désigné contact principal.</p>`,
   styles: `.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}h2{margin:0;font-size:16px;font-weight:600}.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
     .k{display:flex;align-items:flex-start;gap:14px;padding:16px}.k.main{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand) inset}.av{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--brand-50);color:var(--brand);font-weight:600;flex:none}
     .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}.nm{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.lines{display:flex;flex-direction:column;gap:4px;margin-top:6px}.lines a{display:inline-flex;align-items:center;gap:8px;color:var(--text-2);text-decoration:none;overflow-wrap:anywhere}
-    .lines a:hover{color:var(--brand)}.lines app-icon{color:var(--brand)}.small{font-size:12px;margin-top:12px}`,
+    .lines a:hover{color:var(--brand)}.lines app-icon{color:var(--brand)}.small{font-size:12px;margin-top:12px}.tel{display:inline-flex;align-items:center;gap:8px}`,
 })
 export class TabContacts {
   c = input.required<Customer2>(); changed = output<Customer2>();

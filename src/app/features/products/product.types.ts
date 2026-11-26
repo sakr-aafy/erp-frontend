@@ -23,5 +23,9 @@ export interface ActivityDto {
   id: string; auto: boolean; derived: boolean; editable: boolean; kind: string; kindLabel: string; title: string; description: string | null; occurredAt: string; dueDate: string | null; done: boolean | null;
   overdue: boolean; user: string | null; link: string | null; meta?: Record<string, number | string | null>;
 }
-export interface PricingPreview { vatRatePct: number; vatRegime: string; saleTtcMinor: number; belowCost: boolean | null; margins: { marginHtMinor: number; marginRatePct: number | null; markPct: number | null; marginTtcMinor: number; marginTtcRatePct: number | null; costTtcMinor: number } | null }
+export interface PricingPreview {
+  vatRatePct: number | null; vatRegime: string | null; saleTtcMinor: number | null; belowCost: boolean | null;
+  margins: { marginHtMinor: number; marginRatePct: number | null; markPct: number | null; marginTtcMinor: number; marginTtcRatePct: number | null; costTtcMinor: number } | null;
+  estimateRate: number | null; estimatedPurchaseMinor: number | null; estimatedCostMinor: number | null;
+}
 export type { ProductDto };

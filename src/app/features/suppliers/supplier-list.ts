@@ -36,7 +36,7 @@ import { SupplierService } from './supplier.service';
       <div class="card">
         <div class="toolbar-row">
           <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Rechercher</mat-label><app-icon matPrefix name="search" />
-            <input matInput [formControl]="search" placeholder="Nom, matricule, e-mail, ville…" /></mat-form-field>
+            <input matInput [formControl]="search" placeholder="Code, nom, matricule, e-mail, ville…" /></mat-form-field>
           <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Statut</mat-label>
             <mat-select [value]="status()" (selectionChange)="status.set($event.value); reload()"><mat-option value="active">Actifs</mat-option><mat-option value="archived">Archivés</mat-option><mat-option value="all">Tous</mat-option></mat-select></mat-form-field>
           <mat-slide-toggle [checked]="withBalance()" (change)="withBalance.set($event.checked); reload()">Soldes impayés</mat-slide-toggle>
@@ -48,7 +48,7 @@ import { SupplierService } from './supplier.service';
         @else {
           <div class="table-wrap"><table mat-table [dataSource]="items()" matSort (matSortChange)="onSort($event)">
             <ng-container matColumnDef="name"><th mat-header-cell *matHeaderCellDef mat-sort-header="name">Fournisseur</th>
-              <td mat-cell *matCellDef="let c"><a [routerLink]="[c.id]" class="lnk"><strong>{{ c.name }}</strong></a><br><span class="muted">{{ c.taxId ?? 'Sans matricule' }}</span></td></ng-container>
+              <td mat-cell *matCellDef="let c"><a [routerLink]="[c.id]" class="lnk"><strong>{{ c.name }}</strong></a>@if (c.tradeName) { <span class="muted">({{ c.tradeName }})</span>}<br><span class="muted">@if (c.code) {{{ c.code }} · }{{ c.taxId ?? 'Sans matricule' }}</span></td></ng-container>
             <ng-container matColumnDef="contact"><th mat-header-cell *matHeaderCellDef>Contact</th><td mat-cell *matCellDef="let c">{{ c.phone }}<br><span class="muted">{{ c.email }}</span></td></ng-container>
             <ng-container matColumnDef="city"><th mat-header-cell *matHeaderCellDef>Ville</th><td mat-cell *matCellDef="let c">{{ c.address?.city }}</td></ng-container>
             <ng-container matColumnDef="limit"><th mat-header-cell *matHeaderCellDef mat-sort-header="leadTimeDays">Délai de livraison</th><td mat-cell *matCellDef="let c">{{ c.leadTimeDays === null ? '—' : c.leadTimeDays + ' j' }}</td></ng-container>

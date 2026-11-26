@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { FormBuilder } from '@angular/forms';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
-import { applyPreset, buildCustomerForm, customerBody } from './customer-form.model';
+import { Customer2 } from '../../shared/models/api.models';
+import { applyPreset, buildCustomerForm, customerBody, patchCustomerForm } from './customer-form.model';
 
 const ref = { toMinor: (n: number) => Math.round(n * 1000), fromMinor: (n: number) => n / 1000, decimals: () => 3, symbol: () => 'DT' } as unknown as ReferenceDataService;
 const form = () => buildCustomerForm(new FormBuilder());
+const client = (o: Partial<Customer2>) => ({ type: 'company', name: 'Client', tradeName: null, taxId: null, address: {}, phone: null, phoneInfo: null, secondaryPhone: null, secondaryPhoneInfo: null, email: null, website: null,
+  social: { facebook: null, linkedin: null, instagram: null }, mapsUrl: null, creditLimitMinor: null, paymentTerms: null, paymentTermsCustom: false, paymentDelayDays: 0, paymentMethod: null, discountPct: 0,
+  subjectToWithholding: false, stampExempt: false, notes: null, ...o }) as unknown as Customer2;
 
 describe('formulaire client', () => {
   it('exige une raison sociale et valide e-mail, téléphone, URL et remise', () => {
@@ -27,14 +31,38 @@ describe('formulaire client', () => {
     const update = customerBody(f, ref, true); expect(update).toMatchObject({ tradeName: null, phone: null, creditLimitMinor: 5_000_500 });
     f.patchValue({ creditLimit: null }); expect(customerBody(f, ref, true).creditLimitMinor).toBeNull(); // plafond vide = illimité
   });
-  it('un client Passager n’envoie jamais matricule, RC ni secteur', () => {
-    const f = form(); f.patchValue({ type: 'walk_in', name: 'Passage', taxId: '123', registryNumber: 'RC', sector: 'x' });
-    expect(customerBody(f, ref, false)).toMatchObject({ taxId: undefined, registryNumber: undefined, sector: undefined });
-    expect(customerBody(f, ref, true)).toMatchObject({ taxId: null, registryNumber: null, sector: null });
+  it('un client Passager n’envoie pas de matricule fiscal ; RC et secteur n’existent plus', () => {
+    const f = form(); f.patchValue({ type: 'walk_in', name: 'Passage', taxId: '123' });
+    expect(customerBody(f, ref, false)).toMatchObject({ taxId: undefined });
+    expect(customerBody(f, ref, true)).toMatchObject({ taxId: null });
+    for (const k of ['registryNumber', 'sector', 'shippingAddress', 'shippingSameAsBilling']) { expect(k in f.controls).toBe(false); expect(k in customerBody(f, ref, true)).toBe(false); }
   });
-  it('adresse de livraison : envoyée seulement si elle diffère de la facturation', () => {
-    const f = form(); f.patchValue({ name: 'Adr', shippingSameAsBilling: true, shippingAddress: { street: 'Dépôt', city: 'Sfax' } });
-    expect('shippingAddress' in customerBody(f, ref, true)).toBe(false);
-    f.patchValue({ shippingSameAsBilling: false }); expect((customerBody(f, ref, true) as { shippingAddress: { city: string } }).shippingAddress.city).toBe('Sfax');
+  it('nouveau client : retenue à la source activée, timbre non exonéré, modifiables', () => {
+    const f = form(); f.patchValue({ name: 'Nouveau' });
+    expect(customerBody(f, ref, false)).toMatchObject({ subjectToWithholding: true, stampExempt: false });
+    f.patchValue({ subjectToWithholding: false, stampExempt: true }); expect(customerBody(f, ref, false)).toMatchObject({ subjectToWithholding: false, stampExempt: true });
+  });
+  it('un client existant conserve ses réglages fiscaux et ses numéros s’affichent au format lisible', () => {
+    const f = form();
+    patchCustomerForm(f, client({ subjectToWithholding: false, stampExempt: true, phone: '+21623108065', phoneInfo: { display: '+216 23 108 065', href: 'tel:+21623108065', valid: true } }), ref);
+    expect(f.controls.subjectToWithholding.value).toBe(false); expect(f.controls.stampExempt.value).toBe(true); expect(f.controls.phone.value).toBe('+216 23 108 065');
+  });
+  it('conditions personnalisées : texte obligatoire, aucun délai déduit du texte', () => {
+    const f = form(); f.patchValue({ name: 'Libre' }); f.controls.paymentPreset.setValue('30'); applyPreset(f);
+    f.controls.paymentPreset.setValue('free'); applyPreset(f); expect(f.controls.paymentTermsText.invalid).toBe(true); expect(f.valid).toBe(false);
+    f.controls.paymentTermsText.setValue(' 30 % à la commande et le solde avant la livraison ');
+    expect(f.valid).toBe(true);
+    expect(customerBody(f, ref, false)).toMatchObject({ paymentTerms: '30 % à la commande et le solde avant la livraison', paymentTermsCustom: true, paymentDelayDays: 0 });
+    f.controls.paymentPreset.setValue('60'); applyPreset(f); expect(f.valid).toBe(true);
+    expect(customerBody(f, ref, false)).toMatchObject({ paymentTerms: '60 jours', paymentTermsCustom: false, paymentDelayDays: 60 });
+  });
+  it('relecture : conditions personnalisées restaurées ; un ancien texte libre n’est pas remplacé', () => {
+    const f = form();
+    patchCustomerForm(f, client({ paymentTerms: 'Paiement selon contrat', paymentTermsCustom: true }), ref);
+    expect(f.controls.paymentPreset.value).toBe('free'); expect(f.controls.paymentTermsText.value).toBe('Paiement selon contrat');
+    patchCustomerForm(f, client({ paymentTerms: '30 jours fin de mois', paymentTermsCustom: false, paymentDelayDays: 30 }), ref);
+    expect(customerBody(f, ref, true)).toMatchObject({ paymentTerms: '30 jours fin de mois', paymentTermsCustom: false, paymentDelayDays: 30 });
+    patchCustomerForm(f, client({ paymentTerms: '30 jours', paymentDelayDays: 30 }), ref);
+    expect(f.controls.paymentPreset.value).toBe('30');
   });
 });

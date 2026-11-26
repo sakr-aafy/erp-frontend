@@ -17,6 +17,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { EmptyState } from '../../shared/components/empty-state';
 import { ExportMenu } from '../../shared/components/export-menu';
 import { Icon } from '../../shared/components/icon';
+import { PhoneLink } from '../../shared/components/phone-link';
 import { PageHeader } from '../../shared/components/page-header';
 import { RowAction, RowActions } from '../../shared/components/row-actions';
 import { Skeleton } from '../../shared/components/skeleton';
@@ -30,7 +31,7 @@ import { CustomerService } from './customer.service';
 @Component({
   selector: 'app-customer-list',
   imports: [ReactiveFormsModule, RouterLink, MatTableModule, MatPaginatorModule, MatSortModule, MatButtonModule, Icon, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatSlideToggleModule, PageHeader, EmptyState, Skeleton, ExportMenu, HasPermissionDirective, MoneyPipe, RowActions],
+    MatSelectModule, MatSlideToggleModule, PageHeader, EmptyState, Skeleton, ExportMenu, HasPermissionDirective, MoneyPipe, RowActions, PhoneLink],
   template: `
     <div class="page">
       <app-page-header title="Clients" subtitle="Fiches clients, conditions commerciales, plafonds de crédit et soldes">
@@ -63,7 +64,9 @@ import { CustomerService } from './customer.service';
               <td mat-cell *matCellDef="let c" data-label="Type"><span class="kind"><app-icon [name]="typeIcon[c.type]" />{{ typeLabel[c.type] }}</span></td></ng-container>
             <ng-container matColumnDef="taxId"><th mat-header-cell *matHeaderCellDef mat-sort-header="taxId">Matricule fiscal</th><td mat-cell *matCellDef="let c" data-label="Matricule fiscal">{{ c.taxId ?? '—' }}</td></ng-container>
             <ng-container matColumnDef="contact"><th mat-header-cell *matHeaderCellDef>Contact principal</th>
-              <td mat-cell *matCellDef="let c" data-label="Contact">@if (c.primaryContact; as k) {{{ k.name }}<br><span class="muted">{{ k.phone || c.phone || k.email || c.email }}</span>} @else {{{ c.phone ?? '—' }}<br><span class="muted">{{ c.email }}</span>}</td></ng-container>
+              <td mat-cell *matCellDef="let c" data-label="Contact">
+                @if (c.primaryContact; as k) {{{ k.name }}<br>@if (k.phone) {<app-phone class="muted" [info]="k.phoneInfo" [value]="k.phone" />} @else if (c.phone) {<app-phone class="muted" [info]="c.phoneInfo" [value]="c.phone" />} @else {<span class="muted">{{ k.email || c.email }}</span>}}
+                @else {@if (c.phone) {<app-phone [info]="c.phoneInfo" [value]="c.phone" />} @else {—}<br><span class="muted">{{ c.email }}</span>}</td></ng-container>
             <ng-container matColumnDef="city"><th mat-header-cell *matHeaderCellDef mat-sort-header="city">Ville</th><td mat-cell *matCellDef="let c" data-label="Ville">{{ c.address.city || '—' }}</td></ng-container>
             <ng-container matColumnDef="limit"><th mat-header-cell *matHeaderCellDef mat-sort-header="creditLimitMinor" class="r">Limite de crédit</th><td mat-cell *matCellDef="let c" class="r" data-label="Limite de crédit">{{ c.creditLimitMinor === null ? 'Illimitée' : (c.creditLimitMinor | money) }}</td></ng-container>
             <ng-container matColumnDef="balance"><th mat-header-cell *matHeaderCellDef mat-sort-header="balanceMinor" class="r">Solde</th>

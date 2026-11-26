@@ -10,7 +10,7 @@ import { STATUS_CHIP, STATUS_HELP } from '../product.labels';
 import { ProductService } from '../product.service';
 import { TabEditBase } from './tab-edit-base';
 
-/** Onglet 1 — Général : identification, catégorie, marque, modèle, unité, description, statut. */
+/** Onglet 1 — Général : identification, catégorie, sous-catégorie, unité, description, statut. */
 @Component({
   selector: 'app-tab-general',
   imports: [DatePipe, MatButtonModule, Icon, FieldsGeneral],
@@ -25,7 +25,7 @@ import { TabEditBase } from './tab-edit-base';
       <div class="grid">
         <section class="card"><h3>Identification</h3><dl>
           <dt>Code article</dt><dd><strong class="code">{{ p().reference }}</strong></dd><dt>Désignation (nom de l’article)</dt><dd>{{ p().name }}</dd>
-          <dt>Catégorie</dt><dd>{{ p().familyName ?? '—' }}</dd><dt>Sous-catégorie</dt><dd>{{ p().subName ?? '—' }}</dd><dt>Marque</dt><dd>{{ p().brand ?? '—' }}</dd><dt>Modèle</dt><dd>{{ p().model ?? '—' }}</dd>
+          <dt>Catégorie</dt><dd>{{ p().familyName ?? '—' }}</dd><dt>Sous-catégorie</dt><dd>{{ p().subName ?? '—' }}</dd>
           <dt>Unité de vente</dt><dd>{{ p().unitName ?? p().unitCode }}</dd><dt>Type</dt><dd>{{ p().kind === 'service' ? 'Service' : 'Produit' }}</dd><dt>Suivi par numéro de série</dt><dd>{{ p().hasSerial ? 'Oui' : 'Non' }}</dd></dl></section>
         <section class="card"><h3>Statut</h3>
           <p><span class="chip {{ chip[p().status] }}">{{ p().statusLabel }}</span>@if (p().statusReason) { <span class="muted">— {{ p().statusReason }}</span>}</p>

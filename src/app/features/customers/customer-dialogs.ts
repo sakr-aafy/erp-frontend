@@ -42,7 +42,7 @@ export class ContactDialog {
   data = inject<ContactDialogData>(MAT_DIALOG_DATA); private ref = inject(MatDialogRef<ContactDialog>);
   form = new FormBuilder().nonNullable.group({
     name: [this.data.contact?.name ?? '', [Validators.required, Validators.maxLength(100)]], role: [this.data.contact?.role ?? ''],
-    phone: [this.data.contact?.phone ?? '', (c: { value: string }) => (PHONE_OK(c.value) ? null : { phone: true })], email: [this.data.contact?.email ?? '', Validators.email], isPrimary: [this.data.contact?.isPrimary ?? false],
+    phone: [this.data.contact?.phoneInfo?.display ?? this.data.contact?.phone ?? '', (c: { value: string }) => (PHONE_OK(c.value) ? null : { phone: true })], email: [this.data.contact?.email ?? '', Validators.email], isPrimary: [this.data.contact?.isPrimary ?? false],
   });
   busy = signal(false); error = signal('');
   save() {

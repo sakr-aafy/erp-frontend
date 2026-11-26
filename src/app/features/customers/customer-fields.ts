@@ -8,7 +8,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { Icon } from '../../shared/components/icon';
 import { applyPreset, CustomerForm } from './customer-form.model';
-import { PAYMENT_METHODS, TERMS } from './customer.labels';
+import { PAYMENT_METHODS, TERMS, TERMS_EXAMPLES } from './customer.labels';
 
 /**
  * Sections du formulaire client (identification, coordonnées, réseaux et localisation, conditions commerciales, fiscalité).
@@ -34,14 +34,12 @@ import { PAYMENT_METHODS, TERMS } from './customer.labels';
           <mat-form-field appearance="outline"><mat-label>Nom commercial</mat-label><input matInput formControlName="tradeName" /></mat-form-field>
           @if (isCompany()) {
             <mat-form-field appearance="outline"><mat-label>Matricule fiscal</mat-label><input matInput formControlName="taxId" placeholder="Identifiant fiscal" /><mat-hint>Unique par société</mat-hint></mat-form-field>
-            <mat-form-field appearance="outline"><mat-label>Registre de commerce (RC)</mat-label><input matInput formControlName="registryNumber" /></mat-form-field>
-            <mat-form-field appearance="outline"><mat-label>Secteur d’activité</mat-label><input matInput formControlName="sector" placeholder="Industrie, commerce, agriculture…" /></mat-form-field>
           }
         </div>
       </section>
 
       <section class="card" formGroupName="address">
-        <header><app-icon name="place" /><h3>Coordonnées</h3></header>
+        <header><app-icon name="place" /><h3>Adresse de facturation</h3></header>
         <div class="form-grid">
           <mat-form-field appearance="outline" class="wide"><mat-label>Adresse complète</mat-label><input matInput formControlName="street" /></mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Ville</mat-label><input matInput formControlName="city" /></mat-form-field>
@@ -53,7 +51,7 @@ import { PAYMENT_METHODS, TERMS } from './customer.labels';
         <header><app-icon name="phone" /><h3>Contact</h3></header>
         <div class="form-grid">
           <mat-form-field appearance="outline"><mat-label>Téléphone principal</mat-label><input matInput type="tel" formControlName="phone" placeholder="+216 71 000 000" />
-            @if (c.phone.invalid) {<mat-error>Numéro invalide</mat-error>}</mat-form-field>
+            <mat-hint>Format international ajouté selon le pays</mat-hint>@if (c.phone.invalid) {<mat-error>Numéro invalide</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Téléphone secondaire</mat-label><input matInput type="tel" formControlName="secondaryPhone" />
             @if (c.secondaryPhone.invalid) {<mat-error>Numéro invalide</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>E-mail</mat-label><input matInput type="email" formControlName="email" placeholder="contact@exemple.tn" />
@@ -78,36 +76,50 @@ import { PAYMENT_METHODS, TERMS } from './customer.labels';
           <mat-form-field appearance="outline"><mat-label>Plafond de crédit ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="creditLimit" />
             <mat-hint>Vide = illimité</mat-hint>@if (c.creditLimit.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Conditions de paiement</mat-label>
-            <mat-select formControlName="paymentPreset" (selectionChange)="preset()">@for (t of terms; track t.days) {<mat-option [value]="'' + t.days">{{ t.label }}</mat-option>}<mat-option value="custom">Personnalisé…</mat-option></mat-select></mat-form-field>
+            <mat-select formControlName="paymentPreset" (selectionChange)="preset()">@for (t of terms; track t.days) {<mat-option [value]="'' + t.days">{{ t.label }}</mat-option>}<mat-option value="custom">Autre délai (en jours)</mat-option><mat-option value="free">Conditions personnalisées</mat-option></mat-select></mat-form-field>
           @if (c.paymentPreset.value === 'custom') {
             <mat-form-field appearance="outline"><mat-label>Délai de paiement (jours)</mat-label><input matInput type="number" min="0" max="365" formControlName="paymentDelayDays" />
               @if (c.paymentDelayDays.invalid) {<mat-error>Entier entre 0 et 365</mat-error>}</mat-form-field>
+          }
+          @if (c.paymentPreset.value === 'free') {
+            <div class="wide free">
+              <mat-form-field appearance="outline"><mat-label>Conditions personnalisées</mat-label>
+                <textarea matInput rows="2" maxlength="500" formControlName="paymentTermsText" placeholder="Ex. 30 % à la commande et le solde avant la livraison"></textarea>
+                <mat-hint>Les échéances réelles se saisissent sur chaque facture.</mat-hint>
+                <mat-hint align="end">{{ c.paymentTermsText.value.length }}/500</mat-hint>
+                @if (c.paymentTermsText.invalid) {<mat-error>Saisissez les conditions (500 caractères maximum)</mat-error>}</mat-form-field>
+              <div class="examples" role="group" aria-label="Exemples de conditions"><span class="muted">Exemples :</span>
+                @for (e of examples; track e) {<button type="button" class="ex" (click)="useExample(e)">{{ e }}</button>}</div>
+            </div>
           }
           <mat-form-field appearance="outline"><mat-label>Remise habituelle (%)</mat-label><input matInput type="number" min="0" max="100" step="0.01" formControlName="discountPct" />
             @if (c.discountPct.invalid) {<mat-error>Entre 0 et 100 %</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Mode de paiement habituel</mat-label>
             <mat-select formControlName="paymentMethod"><mat-option value="">Non précisé</mat-option>@for (m of methods; track m.value) {<mat-option [value]="m.value">{{ m.label }}</mat-option>}</mat-select></mat-form-field>
         </div>
-        <div class="flags">
-          <mat-slide-toggle formControlName="subjectToWithholding">Assujetti à la retenue à la source</mat-slide-toggle>
-          <mat-slide-toggle formControlName="stampExempt">Exonéré du timbre fiscal</mat-slide-toggle>
-        </div>
+        <fieldset class="flags"><legend>Paramètres fiscaux</legend>
+          <mat-slide-toggle formControlName="subjectToWithholding">Assujetti à la retenue à la source : <strong>{{ c.subjectToWithholding.value ? 'Oui' : 'Non' }}</strong></mat-slide-toggle>
+          <mat-slide-toggle formControlName="stampExempt">Exonéré du timbre fiscal : <strong>{{ c.stampExempt.value ? 'Oui' : 'Non' }}</strong></mat-slide-toggle>
+        </fieldset>
         <p class="muted small">Les paramètres fiscaux ne s’appliquent que si une règle validée existe dans Fiscalité (aucun taux n’est présumé).</p>
         <mat-form-field appearance="outline" class="notes"><mat-label>Notes internes</mat-label><textarea matInput rows="2" formControlName="notes"></textarea></mat-form-field>
       </section>
     </form>`,
   styles: `.sections{display:flex;flex-direction:column;gap:16px}header{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--brand)}h3{margin:0;font-size:16px;font-weight:600;color:var(--text)}
     .kind{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}.code{font-weight:600;color:var(--brand);background:var(--brand-50);padding:4px 12px;border-radius:999px}
-    mat-button-toggle app-icon{margin-right:6px;vertical-align:middle}.wide{grid-column:1/-1}.flags{display:flex;gap:28px;flex-wrap:wrap;margin:6px 0}.small{font-size:12px;margin:4px 0 12px}.notes{width:100%}`,
+    mat-button-toggle app-icon{margin-right:6px;vertical-align:middle}.wide{grid-column:1/-1}.flags{display:flex;gap:12px 28px;flex-wrap:wrap;margin:10px 0 6px;padding:10px 14px 14px;border:1px solid var(--border);border-radius:var(--r-md)}.flags legend{font-size:12px;font-weight:600;color:var(--muted);padding:0 6px}
+    .free{margin-top:4px}.free mat-form-field{width:100%}.examples{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 14px;font-size:12px}
+    .ex{font:inherit;color:var(--brand);background:var(--brand-50);border:1px solid var(--brand-100);border-radius:999px;padding:3px 10px;cursor:pointer;text-align:left}.ex:hover{border-color:var(--brand)}.small{font-size:12px;margin:4px 0 12px}.notes{width:100%}`,
 })
 export class CustomerFields {
   form = input.required<CustomerForm>();
   code = input<string | null>(null);
   ref = inject(ReferenceDataService);
-  terms = TERMS; methods = PAYMENT_METHODS;
+  terms = TERMS; methods = PAYMENT_METHODS; examples = TERMS_EXAMPLES;
   get c() { return this.form().controls; }
   isCompany = () => this.form().controls.type.value === 'company';
   step = () => 1 / 10 ** this.ref.decimals();
   setType(t: 'company' | 'walk_in') { this.form().controls.type.setValue(t); }
   preset() { applyPreset(this.form()); }
+  useExample(text: string) { this.c.paymentTermsText.setValue(text); this.c.paymentTermsText.markAsDirty(); }
 }

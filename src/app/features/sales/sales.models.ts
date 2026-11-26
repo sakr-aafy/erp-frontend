@@ -1,3 +1,4 @@
+import { Address, AddressSnapshot } from '../../shared/models/api.models';
 export type DocKind = 'quotations' | 'proformas' | 'invoices' | 'delivery-notes';
 export interface DocLine {
   id?: string; productId?: string | null; reference?: string | null; designation: string; description?: string | null; unit?: string | null; kind?: string;
@@ -11,7 +12,8 @@ export interface DocTotals {
 }
 export interface ScheduleItem { id?: string; dueDate: string; percent?: number | null; amountMinor?: number; paidMinor?: number; creditedMinor?: number; openMinor?: number }
 export interface SalesDoc {
-  id: string; number: string | null; status: string; type?: 'invoice' | 'credit_note'; customerId: string; customer: { name: string; taxId?: string | null };
+  id: string; number: string | null; status: string; type?: 'invoice' | 'credit_note'; customerId: string; customer: { name: string; taxId?: string | null; shippingAddress?: Address | null };
+  deliveryAddress?: AddressSnapshot | null; paymentTerms?: string | null; paymentTermsCustom?: boolean;
   issueDate?: string; validUntil?: string; deliveryDate?: string; lines: DocLine[]; totals: DocTotals; globalDiscountPct: number; globalDiscountMinor: number;
   withholdingOperationType?: string | null; withholding?: { code: string; ratePct: number; base: string; amountMinor: number } | null; stamp?: { code: string; amountMinor: number } | null;
   notes?: string | null; terms?: string | null; editable?: boolean; paymentMethod?: string | null; schedule?: ScheduleItem[]; paidMinor?: number; creditedMinor?: number; balanceDueMinor?: number; overpaidMinor?: number;
@@ -21,7 +23,7 @@ export interface SalesDoc {
 }
 export interface PaymentDto { id: string; invoiceId: string; amountMinor: number; method: string; paidAt: string; reference: string | null; note: string | null; status: string; cancelReason: string | null }
 export interface CalcPreview { lines: { netHtMinor: number; vat: { code: string; regime: string; ratePct: number } }[]; totals: DocTotals; withholding: { code: string; ratePct: number; base: string; amountMinor: number } | null; stamp: { code: string; amountMinor: number } | null }
-export interface SourceLines { sourceNumber: string | null; customerId: string; lines: { sourceLineId: string; hasSerial?: boolean; designation: string; quantity: number; deliveredQty: number; remainingQty: number }[] }
+export interface SourceLines { sourceNumber: string | null; customerId: string; deliveryAddress?: AddressSnapshot | null; lines: { sourceLineId: string; hasSerial?: boolean; designation: string; quantity: number; deliveredQty: number; remainingQty: number }[] }
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = { cash: 'Espèces', check: 'Chèque', transfer: 'Virement', card: 'Carte bancaire', draft: 'Traite', other: 'Autre' };
 export const STATUS_LABELS: Record<string, string> = {

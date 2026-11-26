@@ -12,19 +12,24 @@ import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { errorMessage } from '../../core/services/api';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { ToastService } from '../../core/services/toast.service';
+import { AddressSelect } from '../../shared/components/address-select';
 import { PageHeader } from '../../shared/components/page-header';
+import { AddressSnapshot, Customer2 } from '../../shared/models/api.models';
 import { Skeleton } from '../../shared/components/skeleton';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
 import { FiscalService } from '../fiscal/fiscal.service';
 import { CalcPreview, DOC_CONFIG, DocConfig, DocKind, PAYMENT_METHOD_LABELS, SalesDoc, SourceLines } from './sales.models';
 import { SalesService } from './sales.service';
 
+/** Valeur du sélecteur ouvrant le texte libre (ne peut pas être confondue avec une condition saisie). */
+const FREE = '__free__';
+const PRESET_TERMS = ['Comptant', '30 jours', '60 jours'];
 const iso = (d?: string | Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
 @Component({
   selector: 'app-doc-form',
-  imports: [ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, Icon, MatAutocompleteModule, PageHeader, Skeleton, MoneyPipe],
+  imports: [AddressSelect, ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, Icon, MatAutocompleteModule, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">
       <app-page-header [title]="(id() ? 'Modifier ' + (cfg().gender === 'f' ? 'la ' : 'le ') : cfg().gender === 'f' ? 'Nouvelle ' : 'Nouveau ') + cfg().singular" [subtitle]="subtitle()" />
@@ -43,6 +48,21 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
             @if (cfg().hasValidity) {<mat-form-field appearance="outline"><mat-label>Valable jusqu’au</mat-label><input matInput type="date" formControlName="validUntil" /></mat-form-field>}
             @if (kind() === 'invoices') {<mat-form-field appearance="outline"><mat-label>Mode de règlement</mat-label><mat-select formControlName="paymentMethod"><mat-option value="">—</mat-option>@for (m of methods; track m.key) {<mat-option [value]="m.key">{{ m.label }}</mat-option>}</mat-select></mat-form-field>}
           </div>
+        </div>
+
+        <div class="card sec"><h3>{{ kind() === 'delivery-notes' ? 'Livraison' : 'Livraison et conditions de paiement' }}</h3>
+          @if (!customerId()) {<p class="muted">Sélectionnez un client pour choisir son adresse de livraison{{ kind() === 'delivery-notes' ? '' : ' et reprendre ses conditions de paiement' }}.</p>}
+          @else {<div class="delivery">
+            <app-address-select [addresses]="customerData()?.deliveryAddresses ?? []" [current]="currentAddress()" [(value)]="addressId" />
+            @if (kind() !== 'delivery-notes') {<div>
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full"><mat-label>Conditions de paiement</mat-label>
+                <mat-select [value]="termsMode()" (selectionChange)="pickTerms($event.value)">
+                  <mat-option value="">Non précisées</mat-option>@for (t of termsOptions(); track t) {<mat-option [value]="t">{{ t }}</mat-option>}<mat-option [value]="free">Conditions personnalisées</mat-option>
+                </mat-select><mat-hint>Reprises de la fiche client, adaptables pour ce document.</mat-hint></mat-form-field>
+              @if (termsMode() === free) {<mat-form-field appearance="outline" class="full terms-text"><mat-label>Texte des conditions de paiement</mat-label>
+                <textarea matInput rows="2" maxlength="500" [value]="termsText()" (input)="termsText.set($any($event.target).value)"></textarea></mat-form-field>}
+            </div>}
+          </div>}
         </div>
 
         @if (srcMode(); as sm) {
@@ -76,7 +96,8 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
             @if (!ref.vatRates().length) {<p class="err-t">Aucune règle de TVA validée : configurez-les dans <a routerLink="/fiscal">Fiscalité</a>.</p>}
           </div>
           @if (kind() === 'invoices') {
-            <div class="card sec"><h3>Échéancier de paiement</h3><p class="muted">Sans échéancier : une échéance unique à la date de facture + délai de paiement du client. Total des pourcentages = 100.</p>
+            <div class="card sec"><h3>Échéancier de paiement</h3>
+              @if (customTerms() && !schedule.length) {<p class="warn" role="status"><app-icon name="warning" />Conditions personnalisées : saisissez les échéances réelles — la validation les exige, aucune date n’est déduite du texte.</p>}<p class="muted">Sans échéancier : une échéance unique à la date de facture + délai de paiement du client. Total des pourcentages = 100.</p>
               <div formArrayName="schedule">@for (s of schedule.controls; track $index; let i = $index) {<div class="row" [formGroupName]="i">
                 <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Échéance</mat-label><input matInput type="date" formControlName="dueDate" /></mat-form-field>
                 <mat-form-field appearance="outline" subscriptSizing="dynamic" style="max-width:140px"><mat-label>% du total</mat-label><input matInput type="number" min="0" max="100" step="0.01" formControlName="percent" /></mat-form-field>
@@ -93,7 +114,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
             @if (kind() === 'invoices' && withholdingTypes().length) {<mat-form-field appearance="outline" style="width:100%;margin-top:8px"><mat-label>Retenue à la source — type d’opération</mat-label>
               <mat-select formControlName="withholdingOperationType"><mat-option value="">Aucune retenue</mat-option>@for (w of withholdingTypes(); track w.code) {<mat-option [value]="w.code">{{ w.code }} — {{ w.ratePct }} % sur {{ w.base === 'ttc' ? 'TTC' : 'HT' }}</mat-option>}</mat-select>
               <mat-hint>Appliquée seulement si les conditions de la règle sont remplies (client assujetti, seuil).</mat-hint></mat-form-field>}
-            @if (cfg().hasValidity) {<mat-form-field appearance="outline" style="width:100%;margin-top:8px"><mat-label>Conditions</mat-label><textarea matInput rows="2" formControlName="terms"></textarea></mat-form-field>}
+            @if (cfg().hasValidity) {<mat-form-field appearance="outline" style="width:100%;margin-top:8px"><mat-label>Autres conditions</mat-label><textarea matInput rows="2" formControlName="terms"></textarea></mat-form-field>}
             <mat-form-field appearance="outline" style="width:100%;margin-top:8px"><mat-label>Notes</mat-label><textarea matInput rows="2" formControlName="notes"></textarea></mat-form-field>
           </div>
           @if (!srcMode()) {
@@ -116,7 +137,8 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
           <button mat-flat-button color="primary" [disabled]="saving()">{{ kind() === 'invoices' ? 'Enregistrer le brouillon' : 'Enregistrer' }}</button></div>
       </form>}
     </div>`,
-  styles: `.sec{margin-bottom:16px}h3{margin:0 0 12px;font-size:16px}.err{color:var(--danger);margin-bottom:16px}.err-t{color:var(--danger)}
+  styles: `.sec{margin-bottom:16px}.delivery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:16px;align-items:start}.full{width:100%}.terms-text{margin-top:12px}
+    .warn{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:var(--r-md);background:var(--accent-50);border:1px solid var(--accent-300);color:var(--accent-ink)}h3{margin:0 0 12px;font-size:16px}.err{color:var(--danger);margin-bottom:16px}.err-t{color:var(--danger)}
     .lines{width:100%;border-collapse:collapse;min-width:720px}.lines th,.lines td{padding:6px 8px;border-bottom:1px solid var(--erp-border);text-align:left;vertical-align:middle}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
     .lines textarea{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;width:100%;min-width:180px}
     .lines input,.lines select{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;background:#fff}.w{width:100%;min-width:200px}.q{width:80px;text-align:right}.p{width:110px;text-align:right}.d{width:70px;text-align:right}
@@ -152,6 +174,36 @@ export class DocForm {
   preview = signal<CalcPreview | null>(null); calcError = signal('');
   loading = signal(false); saving = signal(false); error = signal('');
 
+  // Adresse de livraison et conditions de paiement du document
+  readonly free = FREE;
+  customerData = signal<Customer2 | null>(null);
+  addressId = signal(''); currentAddress = signal<AddressSnapshot | null>(null);
+  /** Sélection correspondant à la copie déjà portée par le document : inchangée, elle n'est pas renvoyée au serveur. */
+  private keptAddress: string | undefined; private addressReady = false;
+  termsMode = signal(''); termsText = signal(''); private termsReady = false; private termsCustom = false;
+  termsOptions = computed(() => { const c = this.customerData(); const own = [c && !c.paymentTermsCustom ? c.paymentTerms : null, this.termsMode()];
+    return [...new Set([...PRESET_TERMS, ...own.filter((t): t is string => !!t && t !== FREE)])]; });
+  customTerms = () => this.termsMode() === FREE && this.termsCustom;
+  pickTerms(v: string) { this.termsMode.set(v); this.termsCustom = v === FREE; this.termsReady = true; }
+  private setTerms(text: string | null | undefined, custom: boolean | undefined) {
+    const t = text ?? ''; const isFree = !!t && (!!custom || !/^(comptant|\d{1,3}\s*jours?)$/i.test(t));
+    this.termsMode.set(isFree ? FREE : t); this.termsText.set(isFree ? t : ''); this.termsCustom = !!custom; this.termsReady = true;
+  }
+  private keepAddress(snapshot: AddressSnapshot | null) {
+    this.currentAddress.set(snapshot); this.addressId.set(snapshot?.addressId ?? ''); this.keptAddress = snapshot?.addressId ?? ''; this.addressReady = true;
+  }
+  /** Charge la fiche du client ; `defaults` indique ce qui doit être repris de la fiche (nouveau document ou client changé). */
+  private loadCustomer(id: string, defaults: { address: boolean; terms: boolean }, then?: (c: Customer2) => void) {
+    this.svc.customer(id).subscribe({ next: (c) => {
+      if (this.customerId() !== id) return; // le client a été changé entre-temps
+      this.customerData.set(c);
+      if (defaults.address) { this.currentAddress.set(null); this.keptAddress = undefined; this.addressId.set(c.deliveryAddresses.find((a) => a.isDefault && !a.archived)?.id ?? ''); this.addressReady = true; }
+      if (defaults.terms) this.setTerms(c.paymentTerms, c.paymentTermsCustom);
+      then?.(c);
+    }, error: (e) => { if (e.status !== 403) this.toast.error(errorMessage(e)); } }); // sans « clients : consulter », le serveur garde les valeurs du document
+  }
+  private resetCustomer() { this.customerData.set(null); this.currentAddress.set(null); this.addressId.set(''); this.keptAddress = undefined; this.addressReady = false; this.termsMode.set(''); this.termsText.set(''); this.termsReady = false; this.termsCustom = false; }
+
   subtitle = () => this.kind() === 'delivery-notes' ? 'Livraison totale ou partielle ; la validation décrémente le stock (module Stock, phase suivante).' : 'Les montants sont calculés par le serveur avec les règles fiscales validées.';
   customerName = (c: { name: string } | string | null) => (typeof c === 'string' ? c : c?.name ?? '');
   vatText = (v: { regime: string; ratePct?: number }) => (v.regime === 'taxable' ? `${v.ratePct} %` : ({ zero: '0 %', exempt: 'exonéré', suspended: 'suspension' } as Record<string, string>)[v.regime]);
@@ -172,11 +224,11 @@ export class DocForm {
     this.lines.push(this.lineGroup({ productId: p.id, reference: p.reference, designation: p.name, unit: p.unitCode, unitPriceMinor: p.salePriceMinor, vatCode: p.vatRateCode }));
     this.productCtrl.setValue('');
   }
-  pickCustomer(c: { id: string; paymentDelayDays: number }) { this.customerId.set(c.id); this.form.updateValueAndValidity(); }
+  pickCustomer(c: { id: string }) { this.resetCustomer(); this.customerId.set(c.id); this.loadCustomer(c.id, { address: true, terms: true }); this.form.updateValueAndValidity(); }
 
   ngOnInit() {
     this.ref.load$().subscribe();
-    this.customerCtrl.valueChanges.pipe(debounceTime(250), distinctUntilChanged(), switchMap((v) => { if (typeof v !== 'string') return of(null); this.customerId.set(''); return v.length >= 1 ? this.svc.customers(v) : of(null); }), takeUntilDestroyed(this.destroy)).subscribe((r) => { if (r) this.customerOptions.set(r.items); });
+    this.customerCtrl.valueChanges.pipe(debounceTime(250), distinctUntilChanged(), switchMap((v) => { if (typeof v !== 'string') return of(null); this.customerId.set(''); this.resetCustomer(); return v.length >= 1 ? this.svc.customers(v) : of(null); }), takeUntilDestroyed(this.destroy)).subscribe((r) => { if (r) this.customerOptions.set(r.items); });
     this.productCtrl.valueChanges.pipe(debounceTime(250), switchMap((v) => (v.length >= 1 ? this.svc.products(v) : of(null))), takeUntilDestroyed(this.destroy)).subscribe((r) => { if (r) this.productOptions.set(r.items); });
     this.form.valueChanges.pipe(debounceTime(400), takeUntilDestroyed(this.destroy)).subscribe(() => this.recalc());
     if (this.kind() === 'invoices') this.fiscal.withholdingTypes().subscribe((w) => this.withholdingTypes.set(w));
@@ -187,7 +239,7 @@ export class DocForm {
   }
   private preselectCustomer() {
     const c = this.customerIdParam(); if (!c) return;
-    this.svc.customer(c).subscribe((x) => { this.customerCtrl.setValue(x, { emitEvent: false }); this.customerId.set(x.id); });
+    this.customerId.set(c); this.loadCustomer(c, { address: true, terms: true }, (x) => this.customerCtrl.setValue(x, { emitEvent: false }));
   }
 
   private loadSource(type: string, sourceId: string) {
@@ -198,10 +250,12 @@ export class DocForm {
     });
   }
   private applySource(s: SourceLines, type: string, id: string, current?: Record<string, number>) {
+    // Nouveau BL : l'adresse du document source est reprise ; à défaut (document ancien), celle par défaut du client
+    if (!current && s.deliveryAddress !== undefined) this.keepAddress(s.deliveryAddress);
     this.srcMode.set(s); this.srcRef = { type, id }; this.srcQty.clear(); this.srcSerials.clear();
     s.lines.forEach((l) => { this.srcQty.push(new FormControl(current ? current[l.sourceLineId] ?? 0 : l.remainingQty, { nonNullable: true })); this.srcSerials.push(new FormControl('', { nonNullable: true })); });
     this.customerId.set(s.customerId); this.lines.clear();
-    this.svc.customer(s.customerId).subscribe((c) => this.customerCtrl.setValue({ id: s.customerId, name: c.name }, { emitEvent: false }));
+    this.loadCustomer(s.customerId, { address: !current && s.deliveryAddress === undefined, terms: false }, (c) => this.customerCtrl.setValue({ id: s.customerId, name: c.name }, { emitEvent: false }));
   }
 
   private loadExisting(id: string) {
@@ -210,6 +264,13 @@ export class DocForm {
       next: (d: SalesDoc) => {
         if (d.editable === false) { this.toast.error('Ce document n’est plus modifiable.'); this.router.navigate([this.cfg().route, id]); return; }
         this.customerCtrl.setValue({ id: d.customerId, name: d.customer.name }, { emitEvent: false }); this.customerId.set(d.customerId); this.lockedCustomer.set(false);
+        // Document antérieur (adresse portée par l'ancien champ) : l'adresse par défaut du client est proposée
+        const legacy = !d.deliveryAddress && !!d.customer.shippingAddress;
+        if (!legacy) this.keepAddress(d.deliveryAddress ?? null);
+        const hasTerms = d.paymentTerms !== null && d.paymentTerms !== undefined;
+        if (hasTerms) this.setTerms(d.paymentTerms, d.paymentTermsCustom); else this.termsReady = true;
+        // Un BL issu d'un document source est rechargé par applySource
+        if (!(this.kind() === 'delivery-notes' && d.source)) this.loadCustomer(d.customerId, { address: legacy, terms: false });
         this.header.patchValue({ issueDate: iso(d.issueDate), validUntil: iso(d.validUntil), deliveryDate: iso(d.deliveryDate), carrier: d.carrier ?? '', paymentMethod: d.paymentMethod ?? '', withholdingOperationType: d.withholdingOperationType ?? '',
           discountMode: d.globalDiscountMinor > 0 ? 'amount' : 'pct', discount: d.globalDiscountMinor > 0 ? this.ref.fromMinor(d.globalDiscountMinor) : d.globalDiscountPct, notes: d.notes ?? '', terms: d.terms ?? '' });
         (d.schedule ?? []).forEach((s) => this.schedule.push(this.installment({ dueDate: s.dueDate, percent: s.percent })));
@@ -248,13 +309,19 @@ export class DocForm {
     this.error.set('');
     if (!this.customerId()) { this.customerCtrl.markAsTouched(); this.error.set('Sélectionnez un client.'); return; }
     const h = this.header.getRawValue(); const k = this.kind(); let body: Record<string, unknown>;
+    if (k !== 'delivery-notes' && this.termsMode() === FREE && !this.termsText().trim()) { this.error.set('Saisissez le texte des conditions de paiement personnalisées.'); return; }
+    const address = this.addressReady && this.addressId() !== this.keptAddress ? { deliveryAddressId: this.addressId() || null } : {};
     if (this.srcMode()) {
       const lines = this.srcMode()!.lines.map((l, i) => { const sn = this.srcSerials.at(i).value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean); return { sourceLineId: l.sourceLineId, quantity: Number(this.srcQty.at(i).value), ...(sn.length && { serials: sn }) }; }).filter((l) => l.quantity > 0);
       if (!lines.length) { this.error.set('Indiquez au moins une quantité à livrer.'); return; }
-      body = { source: this.srcRef, lines, deliveryDate: h.deliveryDate, carrier: h.carrier || undefined, notes: h.notes || undefined };
+      body = { source: this.srcRef, lines, deliveryDate: h.deliveryDate, carrier: h.carrier || undefined, notes: h.notes || undefined, ...address };
     } else {
       if (!this.lines.length || this.lines.invalid) { this.lines.markAllAsTouched(); this.error.set('Corrigez les lignes (désignation, quantité, TVA obligatoires).'); return; }
-      body = { customerId: this.customerId(), lines: this.lineBodies(), ...this.discountParts(), notes: h.notes || undefined };
+      body = { customerId: this.customerId(), lines: this.lineBodies(), ...this.discountParts(), notes: h.notes || undefined, ...address };
+      if (k !== 'delivery-notes' && this.termsReady) {
+        const free = this.termsMode() === FREE;
+        Object.assign(body, { paymentTerms: (free ? this.termsText().trim() : this.termsMode()) || null, paymentTermsCustom: free && this.termsCustom });
+      }
       if (k === 'delivery-notes') Object.assign(body, { deliveryDate: h.deliveryDate, carrier: h.carrier || undefined });
       else body['issueDate'] = h.issueDate;
       if (this.cfg().hasValidity) Object.assign(body, { validUntil: h.validUntil, terms: h.terms || undefined });
