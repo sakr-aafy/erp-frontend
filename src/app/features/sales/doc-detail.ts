@@ -107,7 +107,7 @@ import { QtyPipe } from '../../shared/pipes/quantity.pipe';
       </div>}
 
       @if (kind() === 'invoices' && d()!.status === 'validated' && d()!.type === 'invoice') {
-        <div class="card client" style="margin-top:16px"><div class="client-head"><h3>Coordonnées du client</h3>
+        <div class="card client" style="margin-top:16px"><div class="client-head"><h3>Coordonnées imprimées sur la facture</h3>
             @if (canCorrectCustomer()) {<button mat-stroked-button type="button" (click)="correctCustomer()"><app-icon name="edit" />Modifier les coordonnées du client</button>}</div>
           <p class="who"><strong>{{ d()!.customer.name }}</strong>@for (line of coordinates(d()!.customer); track $index) {<span>{{ line }}</span>}</p>
           @if (d()!.customerCorrections?.length) {<div class="history"><h4>Historique des corrections</h4>
@@ -223,7 +223,7 @@ export class DocDetail {
   }
   correctCustomer() {
     const d = this.d()!;
-    this.open(CustomerDetailsDialog, { id: d.id, number: d.number, customer: d.customer, canUpdateCustomer: this.auth.has('customers:update') }, 'Coordonnées du client corrigées');
+    this.open(CustomerDetailsDialog, { id: d.id, number: d.number, customer: d.customer }, 'Coordonnées de la facture corrigées');
   }
   pdf() { this.dl.openPdf(`/${this.kind()}/${this.id()}/pdf`).subscribe({ error: (e) => this.toast.error(errorMessage(e)) }); }
   send() {
