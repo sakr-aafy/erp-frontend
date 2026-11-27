@@ -69,6 +69,6 @@ export const NAV: NavGroup[] = [
 
 /** Libellés des segments d'URL secondaires (fil d'Ariane). */
 export const SEGMENT_LABELS: Record<string, string> = {
-  new: 'Nouveau', edit: 'Modifier', movements: 'Mouvements', warehouses: 'Magasins', events: 'Événements', categories: 'Catégories', catalog: 'Catalogue', reconciliation: 'Rapprochement bancaire',
+  new: 'Nouveau', edit: 'Modifier', 'from-deliveries': 'Facturer des BL', movements: 'Mouvements', warehouses: 'Magasins', events: 'Événements', categories: 'Catégories', catalog: 'Catalogue', reconciliation: 'Rapprochement bancaire',
   'supplier-payments': 'Règlements fournisseurs', 'sales-by-period': 'Ventes par période', rates: 'Taux de change', import: 'Import', 'change-password': 'Mot de passe',
 };

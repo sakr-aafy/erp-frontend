@@ -27,7 +27,7 @@ export function presetRange(p: string, now = new Date()): { from: string; to: st
 }
 export const GROUP_BY_OPTIONS = [{ value: 'day', label: 'Jour' }, { value: 'week', label: 'Semaine' }, { value: 'month', label: 'Mois' }, { value: 'quarter', label: 'Trimestre' }, { value: 'year', label: 'Année' }];
 export const REASON_OPTIONS = [{ value: 'receipt', label: 'Réception' }, { value: 'import', label: 'Importation' }, { value: 'delivery', label: 'Livraison' }, { value: 'delivery_cancel', label: 'Annulation de livraison' }, { value: 'transfer_out', label: 'Transfert (sortie)' },
-  { value: 'transfer_in', label: 'Transfert (entrée)' }, { value: 'inventory_in', label: 'Inventaire (entrée)' }, { value: 'inventory_out', label: 'Inventaire (sortie)' }, { value: 'manual_in', label: 'Entrée manuelle' }, { value: 'manual_out', label: 'Sortie manuelle' }];
+  { value: 'transfer_in', label: 'Transfert (entrée)' }, { value: 'inventory_in', label: 'Inventaire (entrée)' }, { value: 'inventory_out', label: 'Inventaire (sortie)' }, { value: 'manual_in', label: 'Entrée manuelle' }, { value: 'manual_out', label: 'Sortie manuelle' }, { value: 'customer_return', label: 'Retour client' }];
 
 /** Catalogue des rapports accessibles à l'utilisateur (filtré par le serveur selon les permissions). */
 @Injectable({ providedIn: 'root' })

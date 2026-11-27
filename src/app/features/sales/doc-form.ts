@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, inject, input, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, computed, DestroyRef, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -30,7 +30,8 @@ import { PaymentTermService } from '../payment-terms/payment-term.service';
 import { openPaymentTerms } from '../payment-terms/payment-terms-dialog';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDialog } from '@angular/material/dialog';
-import { CalcPreview, DOC_CONFIG, DocConfig, DocKind, PAYMENT_METHOD_LABELS, SalesDoc, SourceLines } from './sales.models';
+import { CalcPreview, DOC_CONFIG, DocConfig, DocKind, PAYMENT_METHOD_LABELS, SalesDoc, SourceLine, SourceLines } from './sales.models';
+import { SerialPicker } from './cycle/delivery-dialogs';
 import { SalesService } from './sales.service';
 import { QtyPipe } from '../../shared/pipes/quantity.pipe';
 
@@ -80,12 +81,38 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
 
         @if (srcMode(); as sm) {
           <div class="card sec"><h3>Lignes à livrer — {{ sm.sourceNumber }}</h3>
-            <div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th class="r">Commandé</th><th class="r">Déjà livré</th><th class="r">Reste</th><th class="r">À livrer</th><th>N° de série</th></tr></thead>
-              <tbody>@for (l of sm.lines; track l.sourceLineId; let i = $index) {<tr><td>{{ l.designation }}</td><td class="r">{{ l.quantity | qty }}</td><td class="r">{{ l.deliveredQty | qty }}</td><td class="r">{{ l.remainingQty | qty }}</td>
-                <td class="r"><input appDecimal class="q" [formControl]="srcQty.at(i)" [attr.aria-label]="'Quantité à livrer ' + l.designation" [class.bad]="srcQty.at(i).invalid" />@if (srcQty.at(i).invalid) {<small class="err-t" role="alert">{{ qtyError(srcQty.at(i)) }}</small>}</td>
-                <td>@if (l.hasSerial) {<textarea rows="2" [formControl]="srcSerials.at(i)" placeholder="un numéro par ligne" [attr.aria-label]="'Numéros de série ' + l.designation"></textarea>}</td></tr>}</tbody></table></div>
-            <p class="muted">Quantité partielle autorisée : le reste pourra être livré par un autre bon de livraison.</p>
+            @if (sm.warehouses.length) {<div formGroupName="header"><mat-form-field appearance="outline" class="wh"><mat-label>Magasin de sortie</mat-label><mat-select formControlName="warehouseId">@for (w of sm.warehouses; track w.id) {<mat-option [value]="w.id">{{ w.code }} — {{ w.name }}</mat-option>}</mat-select><mat-hint>Le stock ne sort qu’à la validation.</mat-hint></mat-form-field></div>}
+            @else {<p class="warn" role="status"><app-icon name="warning" />Aucun magasin actif : la validation de la livraison sera impossible.</p>}
+            @if (!sm.lines.length) {<p class="warn" role="status"><app-icon name="info" />Toutes les quantités de ce document sont déjà livrées.</p>}
+            @else {
+            <div class="table-wrap"><table class="lines src"><thead><tr><th>Livrer</th><th>Article</th><th class="r">Commandé</th><th class="r">Déjà livré</th><th class="r">Reste</th><th class="r">Stock</th><th class="r">À livrer</th><th>N° de série</th></tr></thead>
+              <tbody>@for (l of sm.lines; track l.sourceLineId; let i = $index) {<tr [class.unpicked]="!srcPick.at(i).value">
+                <td><mat-checkbox [formControl]="srcPick.at(i)" [aria-label]="'Livrer ' + l.designation" /></td>
+                <td class="what">{{ l.designation }}<small class="muted">{{ l.reference }}@if (l.kind === 'service') { · service, sans stock}</small>@if (l.draftQty) {<small class="draft">{{ l.draftQty | qty }} {{ l.unit }} déjà en préparation</small>}</td>
+                <td class="r">{{ l.quantity | qty }} {{ l.unit }}</td><td class="r">{{ l.deliveredQty | qty }}</td><td class="r">{{ l.remainingQty | qty }}</td>
+                <td class="r">@if (l.stock) {{{ stockOf(l) | qty }}} @else {—}</td>
+                <td class="r"><input appDecimal class="q" [formControl]="srcQty.at(i)" [readOnly]="!srcPick.at(i).value" [attr.aria-label]="'Quantité à livrer ' + l.designation" [class.bad]="srcQty.at(i).invalid || qtyOver(l, i)" />
+                  @if (srcQty.at(i).invalid) {<small class="err-t" role="alert">{{ qtyError(srcQty.at(i)) }}</small>}
+                  @else if (qtyOver(l, i)) {<small class="err-t" role="alert">Maximum {{ l.remainingQty | qty }}</small>}
+                  @else if (short(l, i)) {<small class="stock-t" role="status">Stock insuffisant dans ce magasin</small>}</td>
+                <td class="sn">@if (l.hasSerial) {<button mat-stroked-button type="button" [disabled]="!srcPick.at(i).value || !header.controls.warehouseId.value" (click)="pickSerials(l, i)">Choisir ({{ srcSerials.at(i).value.length }}/{{ srcQty.at(i).value || 0 }})</button>
+                  @if (srcSerials.at(i).value.length) {<small>{{ srcSerials.at(i).value.join(', ') }}</small>}} @else {<span class="muted">—</span>}</td></tr>}</tbody></table></div>
+            <p class="muted">Livraison partielle autorisée : le reste pourra être livré par d’autres bons.@if (sm.fullyDelivered) { {{ sm.fullyDelivered }} ligne(s) entièrement livrée(s) ne sont plus proposées.}</p>}
           </div>
+        } @else if (locked(); as lk) {
+          <div class="card sec"><h3>Lignes livrées</h3>
+            <p class="muted">Quantités, prix et remises viennent des bons de livraison. Pour facturer d’autres quantités, supprimez ce brouillon.</p>
+            <div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th>Bon de livraison</th><th class="r">Qté</th><th class="r">P.U. HT</th><th class="r">Rem. %</th><th class="r">Total HT</th></tr></thead>
+              <tbody>@for (l of lk.lines; track l.id) {<tr><td>{{ l.designation }}@if (l.serials?.length) {<small class="muted">N° de série : {{ l.serials!.join(', ') }}</small>}</td><td>{{ l.delivery?.noteNumber }}</td><td class="r">{{ l.quantity | qty }} {{ l.unit }}</td><td class="r">{{ l.unitPriceMinor | money }}</td><td class="r">{{ l.discountPct ? (l.discountPct | qty) : '—' }}</td><td class="r">{{ l.netHtMinor | money }}</td></tr>}</tbody></table></div>
+            <div class="locked-total"><span>Total TTC (recalculé à l’enregistrement selon la date)</span><strong>{{ lk.totals.totalTtcMinor | money }}</strong></div>
+          </div>
+          <div class="card sec"><h3>Échéancier de paiement</h3>
+              @if (customTerms() && !schedule.length) {<p class="warn" role="status"><app-icon name="warning" />Conditions personnalisées : saisissez les échéances réelles — la validation les exige, aucune date n’est déduite du texte.</p>}<p class="muted">Sans échéancier : une échéance unique à la date de facture + délai de paiement du client. Total des pourcentages = 100.</p>
+              <div formArrayName="schedule">@for (s of schedule.controls; track $index; let i = $index) {<div class="row" [formGroupName]="i">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Échéance</mat-label><input matInput type="date" formControlName="dueDate" /></mat-form-field>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" style="max-width:140px"><mat-label>% du total</mat-label><input matInput type="number" min="0" max="100" step="0.01" formControlName="percent" /></mat-form-field>
+                <button mat-icon-button type="button" (click)="schedule.removeAt(i)" aria-label="Retirer l’échéance"><app-icon name="delete" /></button></div>}</div>
+              <button mat-stroked-button type="button" (click)="addInstallment()"><app-icon name="add" />Ajouter une échéance</button></div>
         } @else if (kind() === 'quotations') {
           <div class="card sec"><h3>Lignes</h3>
             <div class="table-wrap"><table class="lines quote"><thead><tr><th>Pos.</th><th>Référence</th><th>Désignation</th><th class="r">Qté</th><th class="r">P.U. HT ({{ ref.symbol() }})</th><th class="r">Rem.%</th><th>TVA</th><th class="r">Total HT</th><th><span class="sr">Ordre et suppression</span></th></tr></thead>
@@ -147,7 +174,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
 
         <div class="bottom">
           <div class="card sec" style="flex:1;min-width:280px" formGroupName="header"><h3>Remises, conditions et notes</h3>
-            @if (!srcMode() && kind() !== 'delivery-notes') {
+            @if (!srcMode() && !locked() && kind() !== 'delivery-notes') {
               @if (legacyPct(); as old) {<div class="warn legacy" role="status"><app-icon name="info" /><div>Ce document porte une ancienne remise globale de {{ old }} % appliquée sur le total, en plus des remises de ligne. Elle est conservée telle quelle.
                 <mat-checkbox [checked]="removeLegacy()" (change)="setRemoveLegacy($event.checked)">La retirer pour utiliser les nouvelles remises</mat-checkbox></div></div>}
               <div class="row discounts">
@@ -163,7 +190,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
             @if (cfg().hasValidity) {<mat-form-field appearance="outline" style="width:100%;margin-top:8px"><mat-label>Autres conditions</mat-label><textarea matInput rows="2" formControlName="terms"></textarea></mat-form-field>}
             <mat-form-field appearance="outline" style="width:100%;margin-top:8px"><mat-label>Notes</mat-label><textarea matInput rows="2" formControlName="notes"></textarea></mat-form-field>
           </div>
-          @if (!srcMode()) {
+          @if (!srcMode() && !locked()) {
             <div class="card sec totals" style="width:380px;max-width:100%"><h3>Totaux <small class="muted">(calculés par le serveur)</small></h3>
               @if (calcError()) {<p class="err-t">{{ calcError() }}</p>}
               @if (preview(); as p) {
@@ -187,7 +214,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
   styles: `.sec{margin-bottom:16px}.delivery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:16px;align-items:start}.full{width:100%}.terms-text{margin-top:12px}
     .warn{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:var(--r-md);background:var(--accent-50);border:1px solid var(--accent-300);color:var(--accent-ink)}h3{margin:0 0 12px;font-size:16px}.err{color:var(--danger);margin-bottom:16px}.err-t{color:var(--danger)}
     .lines{width:100%;border-collapse:collapse;min-width:720px}.lines th,.lines td{padding:6px 8px;border-bottom:1px solid var(--erp-border);text-align:left;vertical-align:middle}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
-    .lines textarea{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;width:100%;min-width:180px}
+    .wh{width:min(360px,100%);margin-bottom:12px}.src{min-width:900px}.src .what{min-width:180px}.lines.src small,.lines td small.muted{display:block;font-size:11px}.draft{color:var(--accent-ink)}tr.unpicked td{opacity:.55}.stock-t{display:block;font-size:11px;color:var(--accent-ink);white-space:normal}.sn small{display:block;max-width:220px;overflow-wrap:anywhere}.locked-total{display:flex;justify-content:flex-end;gap:16px;margin-top:12px;font-size:15px}.locked-total strong{color:var(--brand)}
     app-customer-search{margin-bottom:22px}.lines input,.lines select{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;background:#fff}.w{width:100%;min-width:200px}.q{width:80px;text-align:right}.p{width:110px;text-align:right}.d{width:70px;text-align:right}
     .add{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.bottom{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
     .totals div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.totals .b{font-weight:600;border-top:1px solid var(--erp-border);margin-top:4px;padding-top:6px}.totals .s{font-size:13px;color:var(--muted)}
@@ -211,9 +238,11 @@ export class DocForm {
 
   lines = this.fb.array<ReturnType<DocForm['lineGroup']>>([]);
   schedule = this.fb.array<ReturnType<DocForm['installment']>>([]);
-  srcQty = this.fb.array<FormControl<number>>([]); srcSerials = this.fb.array<FormControl<string>>([]);
+  srcQty = this.fb.array<FormControl<number>>([]); srcSerials = this.fb.array<FormControl<string[]>>([]); srcPick = this.fb.array<FormControl<boolean>>([]);
+  /** Facture issue de bons de livraison : lignes en lecture seule. */
+  locked = signal<SalesDoc | null>(null);
   header = this.fb.nonNullable.group({
-    issueDate: [iso(new Date())], validUntil: [addDays(30)], deliveryDate: [iso(new Date())], carrier: [''], paymentMethod: [''], withholdingOperationType: [''],
+    issueDate: [iso(new Date())], validUntil: [addDays(30)], deliveryDate: [iso(new Date())], carrier: [''], warehouseId: [''], paymentMethod: [''], withholdingOperationType: [''],
     /** Remise globale (%) recopiée sur les lignes ; remise supplémentaire en montant. */
     syncDiscount: [0 as number | null, discountValidator], amountDiscount: [0 as number | null, Validators.min(0)], notes: [''], terms: [''], deliveryTime: ['', Validators.maxLength(500)],
   });
@@ -232,7 +261,7 @@ export class DocForm {
     // Retour à zéro : les derniers taux restent affichés et redeviennent modifiables
     if (sync) for (const g of this.lines.controls) if (g.controls.discountPct.value !== sync) g.controls.discountPct.setValue(sync, { emitEvent: false });
   }
-  form = this.fb.group({ header: this.header, lines: this.lines, schedule: this.schedule, srcQty: this.srcQty, srcSerials: this.srcSerials });
+  form = this.fb.group({ header: this.header, lines: this.lines, schedule: this.schedule, srcQty: this.srcQty, srcSerials: this.srcSerials, srcPick: this.srcPick });
   srcMode = signal<SourceLines | null>(null);
   srcRef: { type: string; id: string } | null = null;
   preview = signal<CalcPreview | null>(null); calcError = signal('');
@@ -277,7 +306,17 @@ export class DocForm {
   }
   private resetCustomer() { this.customerData.set(null); this.currentAddress.set(null); this.addressId.set(''); this.keptAddress = undefined; this.addressReady = false; this.termsMode.set(''); this.termsText.set(''); this.termsReady = false; this.termsCustom = false; }
 
-  subtitle = () => this.kind() === 'delivery-notes' ? 'Livraison totale ou partielle ; la validation décrémente le stock (module Stock, phase suivante).' : 'Les montants sont calculés par le serveur avec les règles fiscales validées.';
+  subtitle = () => this.kind() === 'delivery-notes' ? 'Livraison totale ou partielle : le stock ne sort qu’à la validation.' : 'Les montants sont calculés par le serveur avec les règles fiscales validées.';
+  private view = inject(ChangeDetectorRef);
+  stockOf = (l: SourceLine) => l.stock?.find((s) => s.warehouseId === this.header.controls.warehouseId.value)?.qty ?? 0;
+  private wanted = (i: number) => Number(this.srcQty.at(i).value) || 0;
+  qtyOver = (l: SourceLine, i: number) => this.srcPick.at(i).value && this.wanted(i) > l.remainingQty + 1e-9;
+  short = (l: SourceLine, i: number) => !!l.stock && this.srcPick.at(i).value && !!this.header.controls.warehouseId.value && this.wanted(i) > this.stockOf(l) + 1e-9;
+  pickSerials(l: SourceLine, i: number) {
+    const warehouseId = this.header.controls.warehouseId.value; const w = this.srcMode()!.warehouses.find((x) => x.id === warehouseId);
+    this.dialog.open(SerialPicker, { maxWidth: '95vw', data: { productId: l.productId, warehouseId, warehouseLabel: w?.code ?? '', designation: l.designation, quantity: this.wanted(i), selected: this.srcSerials.at(i).value, excludeId: this.id() } })
+      .afterClosed().subscribe((r?: string[]) => { if (r) { this.srcSerials.at(i).setValue(r); this.view.markForCheck(); } }); // valeur posée hors événement du formulaire
+  }
   vatText = (v: { regime: string; ratePct?: number }) => (v.regime === 'taxable' ? `${v.ratePct} %` : ({ zero: '0 %', exempt: 'exonéré', suspended: 'suspension' } as Record<string, string>)[v.regime]);
 
   lineGroup(l?: { id?: string; productId?: string | null; reference?: string | null; designation?: string; description?: string | null; unit?: string | null; quantity?: number; unitPriceMinor?: number; discountPct?: number; vatCode?: string; precision?: number | null }) {
@@ -345,11 +384,12 @@ export class DocForm {
       error: (e) => { this.toast.error(errorMessage(e)); this.router.navigateByUrl('/delivery-notes'); },
     });
   }
-  private applySource(s: SourceLines, type: string, id: string, current?: Record<string, number>) {
+  private applySource(s: SourceLines, type: string, id: string, current?: Record<string, number>, serials: Record<string, string[]> = {}) {
     // Nouveau BL : l'adresse du document source est reprise ; à défaut (document ancien), celle par défaut du client
     if (!current && s.deliveryAddress !== undefined) this.keepAddress(s.deliveryAddress);
-    this.srcMode.set(s); this.srcRef = { type, id }; this.srcQty.clear(); this.srcSerials.clear();
-    s.lines.forEach((l) => { this.srcQty.push(new FormControl((current ? current[l.sourceLineId] ?? 0 : l.remainingQty) as number, { nonNullable: true, validators: quantityValidator(() => (l.hasSerial ? 0 : this.units.decimalsOf(l.unit)), { allowZero: true, optional: true, carried: () => (current ? current[l.sourceLineId] : l.remainingQty) }) })); this.srcSerials.push(new FormControl('', { nonNullable: true })); });
+    this.srcMode.set(s); this.srcRef = { type, id }; this.srcQty.clear(); this.srcSerials.clear(); this.srcPick.clear();
+    s.lines.forEach((l) => { this.srcQty.push(new FormControl((current ? current[l.sourceLineId] ?? 0 : l.remainingQty) as number, { nonNullable: true, validators: quantityValidator(() => (l.hasSerial ? 0 : this.units.decimalsOf(l.unit)), { allowZero: true, optional: true, carried: () => (current ? current[l.sourceLineId] : l.remainingQty) }) })); this.srcSerials.push(new FormControl(serials[l.sourceLineId] ?? [], { nonNullable: true })); this.srcPick.push(new FormControl(current ? !!current[l.sourceLineId] : true, { nonNullable: true })); });
+    if (!this.header.controls.warehouseId.value) this.header.controls.warehouseId.setValue(s.warehouses.find((w) => w.isDefault)?.id ?? s.warehouses[0]?.id ?? '');
     this.customerId.set(s.customerId); this.lines.clear();
     this.loadCustomer(s.customerId, { address: !current && s.deliveryAddress === undefined, terms: false }, (c) => this.customerSel.set({ id: s.customerId, name: c.name }));
   }
@@ -371,11 +411,13 @@ export class DocForm {
         this.header.patchValue({ issueDate: iso(d.issueDate), validUntil: iso(d.validUntil), deliveryDate: iso(d.deliveryDate), carrier: d.carrier ?? '', paymentMethod: d.paymentMethod ?? '', withholdingOperationType: d.withholdingOperationType ?? '',
           syncDiscount: d.syncDiscountPct ?? 0, amountDiscount: d.globalDiscountPct > 0 ? 0 : this.ref.fromMinor(d.globalDiscountMinor), notes: d.notes ?? '', terms: d.terms ?? '', deliveryTime: d.deliveryTime ?? '' });
         (d.schedule ?? []).forEach((s) => this.schedule.push(this.installment({ dueDate: s.dueDate, percent: s.percent })));
+        if (this.kind() === 'delivery-notes') this.header.controls.warehouseId.setValue(d.warehouseId ?? '');
         if (this.kind() === 'delivery-notes' && d.source) {
-          const cur = Object.fromEntries(d.lines.map((l) => [l.sourceLineId!, l.quantity]));
-          this.svc.sourceLines(d.source.type, d.source.id).subscribe((s) => { this.applySource(s, d.source!.type, d.source!.id, cur); this.loading.set(false); });
+          const cur = Object.fromEntries(d.lines.map((l) => [l.sourceLineId!, l.quantity])); const serials = Object.fromEntries(d.lines.map((l) => [l.sourceLineId!, l.serials ?? []]));
+          this.svc.sourceLines(d.source.type, d.source.id, id).subscribe({ next: (s) => { this.applySource(s, d.source!.type, d.source!.id, cur, serials); this.loading.set(false); }, error: (e) => { this.toast.error(errorMessage(e)); this.router.navigate([this.cfg().route, id]); } });
           return;
         }
+        if (d.linesLocked) { this.locked.set(d); this.lockedCustomer.set(true); this.loading.set(false); return; }
         d.lines.forEach((l) => this.lines.push(this.lineGroup({ ...l, vatCode: l.vat.code })));
         this.loading.set(false); this.recalc();
       },
@@ -388,7 +430,7 @@ export class DocForm {
     return { syncDiscountPct: Number(h.syncDiscount) || 0, globalDiscountMinor: this.ref.toMinor(Number(h.amountDiscount) || 0) };
   }
   private lineBodies() {
-    const keepIds = this.kind() === 'quotations';
+    const keepIds = this.kind() === 'quotations' || this.kind() === 'proformas';
     return this.lines.getRawValue().map((l) => ({ ...(keepIds && l.id && { id: l.id }), ...(l.productId && { productId: l.productId }), designation: l.designation, ...(l.description && { description: l.description }), ...(l.unit && { unit: l.unit }),
       quantity: Number(l.quantity), unitPriceMinor: this.ref.toMinor(Number(l.unitPrice)), discountPct: Number(l.discountPct) || 0, vatCode: l.vatCode }));
   }
@@ -396,7 +438,7 @@ export class DocForm {
   lineTotals = signal(new Map<unknown, number | undefined>());
   private calcSeq = 0;
   private recalc() {
-    if (this.srcMode()) return;
+    if (this.srcMode() || this.locked()) return;
     const ok = this.customerId() && this.lines.length && this.lines.controls.every((g) => g.valid) && this.header.controls.syncDiscount.valid && this.header.controls.amountDiscount.valid;
     if (!ok) { this.calcSeq++; this.preview.set(null); this.lineTotals.set(new Map()); this.calcError.set(''); return; }
     const h = this.header.getRawValue(); const groups = [...this.lines.controls]; const seq = ++this.calcSeq;
@@ -414,11 +456,24 @@ export class DocForm {
     const h = this.header.getRawValue(); const k = this.kind(); let body: Record<string, unknown>;
     if (k !== 'delivery-notes' && this.termsMode() === FREE && !this.termsText().trim()) { this.error.set('Saisissez le texte des conditions de paiement personnalisées.'); return; }
     const address = this.addressReady && this.addressId() !== this.keptAddress ? { deliveryAddressId: this.addressId() || null } : {};
+    const locked = this.locked();
     if (this.srcMode()) {
-      const lines = this.srcMode()!.lines.map((l, i) => { const sn = this.srcSerials.at(i).value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean); return { sourceLineId: l.sourceLineId, quantity: Number(this.srcQty.at(i).value), ...(sn.length && { serials: sn }) }; }).filter((l) => l.quantity > 0);
-      if (this.srcQty.invalid) { this.error.set('Corrigez les quantités à livrer.'); return; }
-      if (!lines.length) { this.error.set('Indiquez au moins une quantité à livrer.'); return; }
-      body = { source: this.srcRef, lines, deliveryDate: h.deliveryDate, carrier: h.carrier || undefined, notes: h.notes || undefined, ...address };
+      const source = this.srcMode()!.lines; const picked = source.map((l, i) => ({ l, i })).filter((x) => this.srcPick.at(x.i).value);
+      if (picked.some(({ i }) => this.srcQty.at(i).invalid)) { this.error.set('Corrigez les quantités à livrer.'); return; }
+      if (!picked.length) { this.error.set('Sélectionnez au moins une ligne à livrer.'); return; }
+      const bad = picked.find(({ l, i }) => !(this.wanted(i) > 0) || this.qtyOver(l, i));
+      if (bad) { this.error.set(`« ${bad.l.designation} » : indiquez une quantité positive, au plus égale au reste à livrer, ou décochez la ligne.`); return; }
+      const serial = picked.find(({ i }) => this.srcSerials.at(i).value.length > this.wanted(i));
+      if (serial) { this.error.set(`« ${serial.l.designation} » : trop de numéros de série pour la quantité saisie.`); return; }
+      const lines = picked.map(({ l, i }) => ({ sourceLineId: l.sourceLineId, quantity: this.wanted(i), ...(this.srcSerials.at(i).value.length && { serials: this.srcSerials.at(i).value }) }));
+      body = { source: this.srcRef, lines, deliveryDate: h.deliveryDate, carrier: h.carrier || undefined, notes: h.notes || undefined, ...(h.warehouseId && { warehouseId: h.warehouseId }), ...address };
+    } else if (locked) {
+      // Les lignes sont renvoyées telles quelles : le serveur refuse toute différence
+      body = { customerId: this.customerId(), lines: locked.lines.map((l) => ({ ...(l.productId && { productId: l.productId }), designation: l.designation, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor, discountPct: l.discountPct ?? 0, vatCode: l.vat.code })), issueDate: h.issueDate, notes: h.notes || undefined, ...address };
+      if (this.termsReady) { const free = this.termsMode() === FREE; Object.assign(body, { paymentTerms: (free ? this.termsText().trim() : this.termsMode()) || null, paymentTermsCustom: this.termsCustom && (free || !!this.managed(this.termsMode())) }); }
+      if (h.paymentMethod) body['paymentMethod'] = h.paymentMethod;
+      if (h.withholdingOperationType) body['withholdingOperationType'] = h.withholdingOperationType;
+      body['schedule'] = this.schedule.getRawValue().map((s) => ({ dueDate: s.dueDate, percent: Number(s.percent) }));
     } else {
       if (!this.lines.length || this.lines.invalid) { this.lines.markAllAsTouched(); this.error.set('Corrigez les lignes : désignation, quantité au bon nombre de décimales, remise et TVA.'); return; }
       body = { customerId: this.customerId(), lines: this.lineBodies(), ...(k !== 'delivery-notes' && this.discountParts()), ...(this.removeLegacy() && { removeLegacyDiscount: true }), notes: h.notes || undefined, ...address };

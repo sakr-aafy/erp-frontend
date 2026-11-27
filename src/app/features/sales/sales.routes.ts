@@ -16,4 +16,9 @@ export function routesFor(kind: DocKind): Routes {
 export const QUOTATION_ROUTES: Routes = routesFor('quotations').map((r) => (r.path === '' ? { ...r, loadComponent: () => import('./quotations/quotation-list').then((m) => m.QuotationList) }
   : r.path === ':id' ? { ...r, loadComponent: () => import('./quotations/quotation-detail').then((m) => m.QuotationDetail) } : r));
 export const PROFORMA_ROUTES = routesFor('proformas');
-export const INVOICE_ROUTES = routesFor('invoices'); export const DELIVERY_ROUTES = routesFor('delivery-notes');
+/** La facturation des bons de livraison (individuelle ou groupée) précède la route « :id ». */
+export const INVOICE_ROUTES: Routes = [
+  { path: 'from-deliveries', canActivate: [permissionGuard], data: { permission: 'invoices:create' }, loadComponent: () => import('./cycle/billing-page').then((m) => m.BillingPage) },
+  ...routesFor('invoices'),
+];
+export const DELIVERY_ROUTES = routesFor('delivery-notes');

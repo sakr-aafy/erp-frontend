@@ -20,7 +20,7 @@ import { EmptyState } from '../../shared/components/empty-state';
 import { PageHeader } from '../../shared/components/page-header';
 import { Skeleton } from '../../shared/components/skeleton';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
-import { DOC_CONFIG, DocConfig, DocKind, SalesDoc, STATUS_LABELS } from './sales.models';
+import { BL_BILLING_LABELS, DOC_CONFIG, DocConfig, DocKind, ProgressState, PROGRESS_LABELS, SalesDoc, STATUS_LABELS } from './sales.models';
 import { SalesService } from './sales.service';
 
 @Component({
@@ -30,6 +30,7 @@ import { SalesService } from './sales.service';
   template: `
     <div class="page">
       <app-page-header [title]="cfg().title" [subtitle]="subtitle()">
+        @if (kind() === 'delivery-notes' && auth.has('invoices:create')) {<a mat-stroked-button routerLink="/invoices/from-deliveries"><app-icon name="receipt" />Facturer des BL</a>}
         @if (auth.has(cfg().permission + ':create')) {<a mat-flat-button color="primary" routerLink="new"><app-icon name="add" />{{ cfg().gender === 'f' ? 'Nouvelle' : 'Nouveau' }} {{ cfg().singular }}</a>}
       </app-page-header>
       @if (kpis().length) {<div class="kpis">@for (k of kpis(); track k.label) {<div class="card"><span class="muted">{{ k.label }}</span><strong>{{ k.value }}</strong></div>}</div>}
@@ -50,23 +51,25 @@ import { SalesService } from './sales.service';
         @if (loading() && !items().length) {<app-skeleton />}
         @else if (!items().length) {<app-empty-state [icon]="cfg().icon" message="Aucun document ne correspond aux critères." />}
         @else {
-          <div class="table-wrap"><table mat-table [dataSource]="items()">
-            <ng-container matColumnDef="number"><th mat-header-cell *matHeaderCellDef>Numéro</th><td mat-cell *matCellDef="let d"><a [routerLink]="[d.id]" class="lnk"><strong>{{ d.number ?? 'Brouillon' }}</strong></a>@if (d.type === 'credit_note') {<span class="chip off" style="margin-left:6px">Avoir</span>}</td></ng-container>
+          <div class="table-wrap"><table mat-table [dataSource]="items()" [class.dense]="kind() === 'proformas'">
+            <ng-container matColumnDef="number"><th mat-header-cell *matHeaderCellDef>Numéro</th><td mat-cell *matCellDef="let d" class="nw"><a [routerLink]="[d.id]" class="lnk"><strong>{{ d.number ?? 'Brouillon' }}</strong></a>@if (d.type === 'credit_note') {<span class="chip off" style="margin-left:6px">Avoir</span>}</td></ng-container>
             <ng-container matColumnDef="customer"><th mat-header-cell *matHeaderCellDef>Client</th><td mat-cell *matCellDef="let d">{{ d.customer.name }}</td></ng-container>
             <ng-container matColumnDef="date"><th mat-header-cell *matHeaderCellDef>Date</th><td mat-cell *matCellDef="let d">{{ (d.issueDate ?? d.deliveryDate) | date: 'dd/MM/yyyy' : 'UTC' }}</td></ng-container>
             <ng-container matColumnDef="validity"><th mat-header-cell *matHeaderCellDef>Validité</th><td mat-cell *matCellDef="let d">{{ d.validUntil | date: 'dd/MM/yyyy' : 'UTC' }}</td></ng-container>
-            <ng-container matColumnDef="total"><th mat-header-cell *matHeaderCellDef>{{ kind() === 'invoices' ? 'Net à payer' : 'Total TTC' }}</th><td mat-cell *matCellDef="let d"><strong>{{ (kind() === 'invoices' ? d.totals.totalPayableMinor : d.totals.totalTtcMinor) | money }}</strong></td></ng-container>
+            <ng-container matColumnDef="total"><th mat-header-cell *matHeaderCellDef>{{ kind() === 'invoices' ? 'Net à payer' : 'Total TTC' }}</th><td mat-cell *matCellDef="let d" class="nw"><strong>{{ (kind() === 'invoices' ? d.totals.totalPayableMinor : d.totals.totalTtcMinor) | money }}</strong></td></ng-container>
             <ng-container matColumnDef="status"><th mat-header-cell *matHeaderCellDef>Statut</th><td mat-cell *matCellDef="let d">
-              <span class="chip" [class.ok]="good(d)" [class.off]="bad(d)">{{ label(d.status) }}</span>
+              <span class="chip" [class.ok]="good(d)" [class.off]="bad(d)">{{ kind() === 'proformas' ? d.statusLabel : label(d.status) }}</span>
               @if (kind() === 'invoices' && d.status === 'validated' && d.type === 'invoice') {<span class="chip" [class.ok]="d.paymentStatus === 'paid'" [class.danger]="d.overdue" style="margin-left:4px">{{ d.overdue ? 'En retard' : label(d.paymentStatus) }}</span>}
-              @if (kind() === 'delivery-notes' && d.invoiced) {<span class="chip ok" style="margin-left:4px">Facturé</span>}</td></ng-container>
+              @if (kind() === 'delivery-notes' && d.status === 'validated') {<span class="chip" [class.ok]="d.billing === 'full' || d.billing === 'source'" [class.warn]="d.billing === 'partial'" style="margin-left:4px">{{ blBilling[d.billing] }}</span>}</td></ng-container>
+            <ng-container matColumnDef="delivery"><th mat-header-cell *matHeaderCellDef>Livraison</th><td mat-cell *matCellDef="let d">@if (d.status === 'cancelled') {<span class="muted">—</span>} @else {<div class="mini" [attr.title]="progress.delivery[state(d.deliveryState)]"><span class="bar"><span [style.width.%]="d.deliveryPct"></span></span><small>{{ progress.delivery[state(d.deliveryState)] }}</small></div>}</td></ng-container>
+            <ng-container matColumnDef="billing"><th mat-header-cell *matHeaderCellDef>Facturation</th><td mat-cell *matCellDef="let d">@if (d.status === 'cancelled') {<span class="muted">—</span>} @else {<div class="mini bill" [attr.title]="progress.billing[state(d.billingState)]"><span class="bar"><span [style.width.%]="d.billingPct"></span></span><small>{{ progress.billing[state(d.billingState)] }}</small></div>}</td></ng-container>
             <tr mat-header-row *matHeaderRowDef="cols()"></tr><tr mat-row *matRowDef="let r; columns: cols()" class="row" (click)="open(r)"></tr>
           </table></div>
         }
         <mat-paginator [length]="total()" [pageSize]="pageSize()" [pageIndex]="page()" [pageSizeOptions]="[10, 20, 50]" (page)="onPage($event)" />
       </div>
     </div>`,
-  styles: `.lnk{color:inherit;text-decoration:none}.row{cursor:pointer}.row:hover{background:var(--brand-50)}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:16px}.kpis .card{display:flex;flex-direction:column;gap:4px}.kpis strong{font-size:20px}`,
+  styles: `.nw{white-space:nowrap}.dense .mat-mdc-cell,.dense .mat-mdc-header-cell{padding:0 8px!important}.mini{display:flex;flex-direction:column;gap:3px;min-width:92px}.mini .bar{height:6px;border-radius:999px;background:var(--brand-100);overflow:hidden}.mini .bar span{display:block;height:100%;background:var(--brand)}.mini.bill .bar{background:var(--accent-100)}.mini.bill .bar span{background:var(--accent)}.mini small{font-size:11px;color:var(--muted);line-height:1.3}.lnk{color:inherit;text-decoration:none}.row{cursor:pointer}.row:hover{background:var(--brand-50)}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:16px}.kpis .card{display:flex;flex-direction:column;gap:4px}.kpis strong{font-size:20px}`,
 })
 export class DocList {
   kind = input.required<DocKind>();
@@ -76,12 +79,13 @@ export class DocList {
   items = signal<SalesDoc[]>([]); total = signal(0); loading = signal(true); kpis = signal<{ label: string; value: string }[]>([]);
   page = signal(0); pageSize = signal(20); status = signal(''); type = signal(''); paymentStatus = signal(''); overdue = signal(false); unbilled = signal(false);
   search = new FormControl('', { nonNullable: true }); from = new FormControl('', { nonNullable: true }); to = new FormControl('', { nonNullable: true });
-  cols = computed(() => ['number', 'customer', 'date', ...(this.cfg().hasValidity ? ['validity'] : []), ...(this.kind() === 'delivery-notes' ? [] : ['total']), 'status']);
-  label = (s: string) => STATUS_LABELS[s] ?? s;
+  cols = computed(() => ['number', 'customer', 'date', ...(this.cfg().hasValidity ? ['validity'] : []), ...(this.kind() === 'delivery-notes' ? [] : ['total']), 'status', ...(this.kind() === 'proformas' ? ['delivery', 'billing'] : [])]);
+  progress = PROGRESS_LABELS; blBilling = BL_BILLING_LABELS as Record<string, string>; state = (s?: ProgressState) => s ?? 'none';
+  label = (s: string) => (s === 'validated' && this.kind() === 'delivery-notes' ? 'Validé' : STATUS_LABELS[s] ?? s);
   good = (d: SalesDoc) => ['accepted', 'validated', 'converted', 'paid'].includes(d.status);
   bad = (d: SalesDoc) => ['refused', 'expired', 'cancelled'].includes(d.status);
-  subtitle = () => ({ quotations: 'Création, suivi des statuts et conversion en facture proforma', proformas: 'Engagement précontractuel — conversion en facture définitive',
-    invoices: 'Factures et avoirs numérotés légalement ; une facture validée n’est jamais modifiée', 'delivery-notes': 'Livraisons totales ou partielles, facturation des BL' })[this.kind()];
+  subtitle = () => ({ quotations: 'Création, suivi des statuts et conversion en facture proforma', proformas: 'Commandes à livrer par bons de livraison, puis à facturer',
+    invoices: 'Factures et avoirs numérotés légalement ; une facture validée n’est jamais modifiée', 'delivery-notes': 'Livraisons totales ou partielles ; le stock sort à la validation' })[this.kind()];
 
   private route = inject(ActivatedRoute);
   ngOnInit() {
@@ -102,8 +106,8 @@ export class DocList {
   }
   private loadKpis() {
     const k = this.kind(); const fmt = (m: number) => this.fmt(m);
-    if (k === 'quotations' || k === 'proformas') {
-      if (this.auth.has(this.cfg().permission + ':view')) this.svc.stats(k).subscribe((s) => this.kpis.set([{ label: 'En attente', value: `${s['pending']}` }, { label: 'Total en attente', value: fmt(s['pendingTotalMinor']!) }, { label: 'Taux de conversion', value: `${s['conversionRatePct']} %` }]));
+    if (k === 'proformas') {
+      if (this.auth.has('proformas:view')) this.svc.stats(k).subscribe((s) => this.kpis.set([{ label: 'En cours', value: `${s['pending']}` }, { label: 'Montant TTC en cours', value: fmt(s['pendingTotalMinor']!) }, { label: 'À livrer', value: `${s['toDeliver']}` }, { label: 'Facturées en totalité', value: `${s['billed']}` }]));
     } else if (k === 'invoices') {
       this.svc.invoiceSummary().subscribe((s) => this.kpis.set([{ label: 'Chiffre d’affaires HT', value: fmt(s.revenueHtMinor) }, { label: 'TVA collectée', value: fmt(s.vatCollectedMinor) }, { label: 'Reste à encaisser', value: fmt(s.unpaidMinor) }]));
     }

@@ -4,6 +4,11 @@ export interface DocLine {
   id?: string; position?: number; productId?: string | null; reference?: string | null; designation: string; description?: string | null; unit?: string | null; kind?: string;
   quantity: number; unitPriceMinor: number; discountPct: number; vat: { code: string; regime: string; ratePct: number };
   grossMinor?: number; discountMinor?: number; netHtMinor?: number; deliveredQty?: number; sourceLineId?: string | null;
+  serials?: string[] | null;
+  /** Bon de livraison : retours, quantité facturée et restant à facturer. */
+  returnedQty?: number; billedQty?: number; availableToBill?: number;
+  /** Facture issue de BL : livraison d'origine. */
+  delivery?: { noteId: string; noteNumber: string | null } | null;
 }
 export interface VatGroup { vatCode: string; regime: string; ratePct: number; baseMinor: number; vatMinor: number }
 export interface DocTotals {
@@ -11,7 +16,16 @@ export interface DocTotals {
   stampMinor: number; withholdingMinor: number; totalPayableMinor: number;
 }
 export interface ScheduleItem { id?: string; dueDate: string; percent?: number | null; amountMinor?: number; paidMinor?: number; creditedMinor?: number; openMinor?: number }
+export type ProgressState = 'none' | 'partial' | 'full';
+export interface DeliveryReturn { id: string; date: string; warehouseId: string | null; reason: string; userName: string | null; lines: { lineId: string; designation: string; unit: string | null; quantity: number; serials: string[]; creditedQty: number }[] }
 export interface SalesDoc {
+  /** Proforma : avancements indépendants du statut administratif. */
+  deliveryState?: ProgressState; deliveryPct?: number; billingState?: ProgressState; billingPct?: number; quotationNumber?: string | null;
+  cancelledByName?: string | null; legacyFlow?: boolean; sentByName?: string | null;
+  /** Bon de livraison. */
+  billing?: 'none' | 'partial' | 'full' | 'source'; invoiceIds?: string[]; returns?: DeliveryReturn[]; returnable?: boolean; warehouseId?: string | null; validatedByName?: string | null; validatedAt?: string | null;
+  /** Facture issue de BL et avoirs. */
+  origin?: 'delivery' | null; linesLocked?: boolean; creditEffect?: CreditEffect | null; sourceRefs?: { quotationNumber?: string; quotationVersion?: number; proformaNumber?: string } | null;
   id: string; number: string | null; status: string; type?: 'invoice' | 'credit_note'; customerId: string; customer: { name: string; code?: string | null; taxId?: string | null; shippingAddress?: Address | null };
   deliveryAddress?: AddressSnapshot | null; paymentTerms?: string | null; paymentTermsCustom?: boolean;
   issueDate?: string; validUntil?: string; deliveryDate?: string; lines: DocLine[]; totals: DocTotals;
@@ -50,11 +64,37 @@ export interface QuotationActivity {
 }
 export interface PaymentDto { id: string; invoiceId: string; amountMinor: number; method: string; paidAt: string; reference: string | null; note: string | null; status: string; cancelReason: string | null }
 export interface CalcPreview { lines: { netHtMinor: number; vat: { code: string; regime: string; ratePct: number } }[]; totals: DocTotals; withholding: { code: string; ratePct: number; base: string; amountMinor: number } | null; stamp: { code: string; amountMinor: number } | null }
-export interface SourceLines { sourceNumber: string | null; customerId: string; deliveryAddress?: AddressSnapshot | null; lines: { sourceLineId: string; hasSerial?: boolean; unit?: string | null; designation: string; quantity: number; deliveredQty: number; remainingQty: number }[] }
+export interface SourceLine { sourceLineId: string; productId: string | null; reference: string | null; designation: string; unit: string | null; kind: string; hasSerial: boolean; quantity: number; deliveredQty: number; remainingQty: number; draftQty: number; stock: { warehouseId: string; qty: number }[] | null }
+export interface SourceLines { sourceNumber: string | null; customerId: string; deliveryAddress?: AddressSnapshot | null; fullyDelivered: number; warehouses: WarehouseOption[]; lines: SourceLine[] }
+export interface WarehouseOption { id: string; code: string; name: string; isActive: boolean; isDefault: boolean }
+
+// ---- Cycle commercial ----
+export type CreditEffect = 'financial' | 'return' | 'billing_correction';
+export const CREDIT_EFFECTS: { value: CreditEffect; label: string; help: string }[] = [
+  { value: 'financial', label: 'Avoir financier', help: 'Corrige les montants et le solde du client. Aucune entrée de stock, aucune quantité à refacturer.' },
+  { value: 'return', label: 'Retour de marchandise', help: 'Autorise ensuite l’enregistrement du retour physique sur le bon de livraison. Le stock n’évolue qu’à ce moment-là.' },
+  { value: 'billing_correction', label: 'Correction de facturation', help: 'Les quantités créditées redeviennent à facturer depuis leurs bons de livraison. Aucune entrée de stock.' },
+];
+export interface TrackingLine { lineId: string; reference: string | null; designation: string; unit: string | null; kind: string; ordered: number; delivered: number; returned: number; remainingToDeliver: number; inDraftDeliveries: number; invoiced: number; inDraftInvoices: number; deliveredNotInvoiced: number; remainingToBill: number }
+export interface Tracking {
+  legacyFlow: boolean; lines: TrackingLine[]; method: string; billableDeliveries: number;
+  delivery: { state: ProgressState; pct: number; label: string; count: number; validatedCount: number }; billing: { state: ProgressState; pct: number; label: string; count: number; validatedCount: number };
+}
+export interface Cancellation { allowed: boolean; blockers: { type: 'proforma' | 'deliveryNote' | 'invoice'; id: string; number: string | null; message: string }[]; warnings: string[]; draftDeliveries: { id: string; number: string }[]; quotation: { id: string; number: string; willCancel: boolean; reason: string | null } | null }
+export type ChainType = 'quotation' | 'proforma' | 'deliveryNote' | 'invoice';
+export interface ChainItem { type: ChainType; label: string; id: string; number: string | null; date: string; status: string; statusLabel: string; amountMinor: number; route: string; current: boolean; detail: string | null }
+export interface CycleEventDto { id: string; action: string; title: string; at: string; user: string | null; number: string | null; description: string | null }
+export interface Billable {
+  id: string; number: string; date: string; status: string; billing: string; customerId: string; customerName: string; source: { type: string; id: string; number: string | null } | null; groupKey: string; totalHtMinor: number; totalTtcMinor: number;
+  lines: { lineId: string; reference: string | null; designation: string; unit: string | null; quantity: number; returned: number; available: number }[];
+}
+export interface Returnable { lines: { lineId: string; reference: string | null; designation: string; unit: string | null; delivered: number; returned: number; billed: number; unbilled: number; credited: number; returnable: number; serials: string[] }[] }
+export const PROGRESS_LABELS = { delivery: { none: 'Non livrée', partial: 'Partiellement livrée', full: 'Totalement livrée' }, billing: { none: 'Non facturée', partial: 'Partiellement facturée', full: 'Totalement facturée' } } as const;
+export const BL_BILLING_LABELS: Record<string, string> = { none: 'Non facturé', partial: 'Partiellement facturé', full: 'Facturé', source: 'Facturé (facture source)' };
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = { cash: 'Espèces', check: 'Chèque', transfer: 'Virement', card: 'Carte bancaire', draft: 'Traite', other: 'Autre' };
 export const STATUS_LABELS: Record<string, string> = {
-  pending: 'En attente', superseded: 'Remplacée', abandoned: 'Brouillon abandonné', sent: 'Envoyé', accepted: 'Accepté', refused: 'Refusé', expired: 'Expiré', converted: 'Convertie', cancelled: 'Annulé', draft: 'Brouillon', validated: 'Validée',
+  pending: 'En attente', superseded: 'Remplacée', converted_legacy: 'Convertie (ancien parcours)', abandoned: 'Brouillon abandonné', sent: 'Envoyé', accepted: 'Accepté', refused: 'Refusé', expired: 'Expiré', converted: 'Convertie', cancelled: 'Annulé', draft: 'Brouillon', validated: 'Validée',
   unpaid: 'Impayée', partial: 'Partiellement payée', paid: 'Payée',
 };
 export interface DocConfig {
@@ -63,7 +103,7 @@ export interface DocConfig {
 }
 export const DOC_CONFIG: Record<DocKind, DocConfig> = {
   quotations: { kind: 'quotations', title: 'Devis', singular: 'devis', gender: 'm', route: '/quotations', permission: 'quotations', calcType: 'quotation', icon: 'request_quote', statuses: ['draft', 'sent', 'accepted', 'refused', 'expired', 'cancelled'], hasValidity: true },
-  proformas: { kind: 'proformas', title: 'Factures proforma', singular: 'facture proforma', gender: 'f', route: '/proformas', permission: 'proformas', calcType: 'proforma', icon: 'description', statuses: ['pending', 'converted', 'expired', 'cancelled'], hasValidity: true },
+  proformas: { kind: 'proformas', title: 'Factures proforma', singular: 'facture proforma', gender: 'f', route: '/proformas', permission: 'proformas', calcType: 'proforma', icon: 'description', statuses: ['pending', 'cancelled', 'expired', 'converted'], hasValidity: true },
   invoices: { kind: 'invoices', title: 'Factures de vente', singular: 'facture', gender: 'f', route: '/invoices', permission: 'invoices', calcType: 'invoice', icon: 'receipt', statuses: ['draft', 'validated'], hasValidity: false },
   'delivery-notes': { kind: 'delivery-notes', title: 'Bons de livraison', singular: 'bon de livraison', gender: 'm', route: '/delivery-notes', permission: 'deliveryNotes', calcType: 'deliveryNote', icon: 'local_shipping', statuses: ['draft', 'validated', 'cancelled'], hasValidity: false },
 };

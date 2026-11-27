@@ -18,7 +18,7 @@ import { PageHeader } from '../../../shared/components/page-header';
 import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
 
-const REASONS: Record<string, string> = { receipt: 'Réception', import: 'Importation', delivery: 'Livraison', delivery_cancel: 'Annulation de livraison', transfer_out: 'Transfert (sortie)', transfer_in: 'Transfert (entrée)', inventory_in: 'Inventaire (+)', inventory_out: 'Inventaire (−)', manual_in: 'Entrée manuelle', manual_out: 'Sortie manuelle' };
+const REASONS: Record<string, string> = { receipt: 'Réception', import: 'Importation', delivery: 'Livraison', delivery_cancel: 'Annulation de livraison', transfer_out: 'Transfert (sortie)', transfer_in: 'Transfert (entrée)', inventory_in: 'Inventaire (+)', inventory_out: 'Inventaire (−)', manual_in: 'Entrée manuelle', manual_out: 'Sortie manuelle', customer_return: 'Retour client' };
 
 /** Historique complet des mouvements (par article, magasin, motif, période). Les mouvements sont immuables. */
 @Component({

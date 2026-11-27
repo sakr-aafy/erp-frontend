@@ -18,6 +18,7 @@ import { QuotationCommentsTab } from './quotation-comments';
 import { QuotationDocumentsTab } from './quotation-documents';
 import { QuotationVersionsTab } from './quotation-versions';
 import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
+import { RelatedDocuments } from '../cycle/related-documents';
 
 type Tab = 'details' | 'versions' | 'documents' | 'comments' | 'activity';
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -28,7 +29,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 /** Fiche détaillée d'un devis : en-tête (client, dates, version, statut, montant TTC, actions) et cinq onglets. */
 @Component({
   selector: 'app-quotation-detail',
-  imports: [QtyPipe, DatePipe, RouterLink, MatButtonModule, Icon, Skeleton, MoneyPipe, AddressBody, QuotationActivityTab, QuotationVersionsTab, QuotationDocumentsTab, QuotationCommentsTab],
+  imports: [RelatedDocuments, QtyPipe, DatePipe, RouterLink, MatButtonModule, Icon, Skeleton, MoneyPipe, AddressBody, QuotationActivityTab, QuotationVersionsTab, QuotationDocumentsTab, QuotationCommentsTab],
   template: `
     <div class="page">
       <a class="back" routerLink="/quotations"><app-icon name="arrow_back" />Retour aux devis</a>
@@ -94,6 +95,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
                 @if (d()!.stamp || d()!.withholding) {<div class="b"><span>Net à payer</span><span>{{ d()!.totals.totalPayableMinor | money }}</span></div>}
               </section>
             </div>
+            <app-related-documents type="quotation" [id]="d()!.id" [history]="false" [refresh]="reloads()" />
           }
         </div>
       }
