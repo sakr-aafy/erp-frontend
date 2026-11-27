@@ -16,13 +16,14 @@ import { EmptyState } from '../../../shared/components/empty-state';
 import { ExportMenu } from '../../../shared/components/export-menu';
 import { PageHeader } from '../../../shared/components/page-header';
 import { MoneyPipe } from '../../../shared/pipes/money.pipe';
+import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
 
 const REASONS: Record<string, string> = { receipt: 'Réception', import: 'Importation', delivery: 'Livraison', delivery_cancel: 'Annulation de livraison', transfer_out: 'Transfert (sortie)', transfer_in: 'Transfert (entrée)', inventory_in: 'Inventaire (+)', inventory_out: 'Inventaire (−)', manual_in: 'Entrée manuelle', manual_out: 'Sortie manuelle' };
 
 /** Historique complet des mouvements (par article, magasin, motif, période). Les mouvements sont immuables. */
 @Component({
   selector: 'app-stock-movements',
-  imports: [DatePipe, ReactiveFormsModule, RouterLink, MatTableModule, MatPaginatorModule, MatButtonModule, Icon, MatFormFieldModule, MatInputModule, MatSelectModule, PageHeader, EmptyState, ExportMenu, MoneyPipe],
+  imports: [QtyPipe, DatePipe, ReactiveFormsModule, RouterLink, MatTableModule, MatPaginatorModule, MatButtonModule, Icon, MatFormFieldModule, MatInputModule, MatSelectModule, PageHeader, EmptyState, ExportMenu, MoneyPipe],
   template: `
     <div class="page"><app-page-header title="Mouvements de stock" subtitle="Traçabilité complète : chaque mouvement est immuable et relié à son document (une correction passe par un mouvement inverse)">
         <a mat-stroked-button routerLink="/stock"><app-icon name="arrow_back" />Stock</a><app-export-menu path="/stock/movements/export" [params]="params()" /></app-page-header>
@@ -38,8 +39,8 @@ const REASONS: Record<string, string> = { receipt: 'Réception', import: 'Import
           <ng-container matColumnDef="art"><th mat-header-cell *matHeaderCellDef>Article</th><td mat-cell *matCellDef="let m"><strong>{{ m.reference }}</strong><br><span class="muted">{{ m.name }}</span></td></ng-container>
           <ng-container matColumnDef="wh"><th mat-header-cell *matHeaderCellDef>Magasin</th><td mat-cell *matCellDef="let m">{{ m.warehouse }}</td></ng-container>
           <ng-container matColumnDef="reason"><th mat-header-cell *matHeaderCellDef>Motif</th><td mat-cell *matCellDef="let m">{{ label(m.reason) }}@if (m.forced) {<span class="chip off" style="margin-left:4px">Stock négatif autorisé</span>}@if (m.note) {<br><span class="muted">{{ m.note }}</span>}</td></ng-container>
-          <ng-container matColumnDef="qty"><th mat-header-cell *matHeaderCellDef style="text-align:right">Quantité</th><td mat-cell *matCellDef="let m" style="text-align:right" [style.color]="m.direction === 'in' ? 'var(--brand)' : 'var(--danger)'"><strong>{{ m.direction === 'in' ? '+' : '−' }}{{ m.quantity }}</strong></td></ng-container>
-          <ng-container matColumnDef="after"><th mat-header-cell *matHeaderCellDef style="text-align:right">Stock après</th><td mat-cell *matCellDef="let m" style="text-align:right">{{ m.qtyAfter }}</td></ng-container>
+          <ng-container matColumnDef="qty"><th mat-header-cell *matHeaderCellDef style="text-align:right">Quantité</th><td mat-cell *matCellDef="let m" style="text-align:right" [style.color]="m.direction === 'in' ? 'var(--brand)' : 'var(--danger)'"><strong>{{ m.direction === 'in' ? '+' : '−' }}{{ m.quantity | qty }}</strong></td></ng-container>
+          <ng-container matColumnDef="after"><th mat-header-cell *matHeaderCellDef style="text-align:right">Stock après</th><td mat-cell *matCellDef="let m" style="text-align:right">{{ m.qtyAfter | qty }}</td></ng-container>
           <ng-container matColumnDef="val"><th mat-header-cell *matHeaderCellDef style="text-align:right">Valeur</th><td mat-cell *matCellDef="let m" style="text-align:right">{{ m.valueMinor | money }}</td></ng-container>
           <ng-container matColumnDef="doc"><th mat-header-cell *matHeaderCellDef>Document</th><td mat-cell *matCellDef="let m">{{ m.source?.number ?? '—' }}@if (m.serials?.length) {<br><span class="muted">{{ m.serials.join(', ') }}</span>}</td></ng-container>
           <tr mat-header-row *matHeaderRowDef="cols"></tr><tr mat-row *matRowDef="let r; columns: cols"></tr></table></div>}

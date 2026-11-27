@@ -10,13 +10,14 @@ import { errorMessage } from '../../../core/services/api';
 import { Icon } from '../../../shared/components/icon';
 import { SEND_METHODS } from '../sales.models';
 
-export type QuotationDialogMode = 'mark-sent' | 'email' | 'accept' | 'refuse';
+export type QuotationDialogMode = 'mark-sent' | 'email' | 'accept' | 'refuse' | 'new-version';
 export interface QuotationDialogData { mode: QuotationDialogMode; number: string; customerEmail?: string | null; submit: (body: Record<string, string>) => Observable<unknown> }
 const CONFIG: Record<QuotationDialogMode, { title: string; help: string; confirm: string; icon: string }> = {
-  'mark-sent': { title: 'Marquer comme envoyé', help: 'À utiliser lorsque le devis a été transmis par un autre moyen que l’e-mail de l’application.', confirm: 'Marquer comme envoyé', icon: 'send' },
-  email: { title: 'Envoyer par e-mail', help: 'Le PDF du devis est joint. Le statut ne passe à « Envoyé » que si l’envoi réussit.', confirm: 'Envoyer', icon: 'mail' },
-  accept: { title: 'Accepter le devis', help: 'Le devis accepté est figé : il pourra être converti en proforma ou en facture.', confirm: 'Accepter le devis', icon: 'check_circle' },
+  'mark-sent': { title: 'Marquer comme envoyé', help: 'À utiliser lorsque le devis a été transmis par un autre moyen que l’e-mail de l’application. La version transmise est figée.', confirm: 'Marquer comme envoyé', icon: 'send' },
+  email: { title: 'Envoyer par e-mail', help: 'Le PDF du devis est joint. Un brouillon ne passe à « Envoyé » que si l’envoi réussit ; la version envoyée est alors figée.', confirm: 'Envoyer', icon: 'mail' },
+  accept: { title: 'Accepter le devis', help: 'La version acceptée est figée : elle pourra être convertie en facture proforma.', confirm: 'Accepter le devis', icon: 'check_circle' },
   refuse: { title: 'Refuser le devis', help: 'Le devis et son historique sont conservés.', confirm: 'Refuser le devis', icon: 'cancel' },
+  'new-version': { title: 'Créer une nouvelle version', help: 'La version actuelle est conservée telle quelle. Un brouillon identique est ouvert sous le même numéro ; la version précédente ne pourra plus être acceptée tant que ce brouillon existe.', confirm: 'Créer la version', icon: 'layers' },
 };
 
 /** Dialogue des actions de statut d'un devis : appelle le serveur puis se ferme avec le résultat ; l'erreur reste affichée. */
@@ -40,6 +41,8 @@ const CONFIG: Record<QuotationDialogMode, { title: string; help: string; confirm
           <mat-form-field appearance="outline"><mat-label>Message (facultatif)</mat-label><textarea matInput rows="3" formControlName="message" maxlength="2000"></textarea></mat-form-field>
         }
         @if (data.mode === 'accept') {<mat-form-field appearance="outline"><mat-label>Commentaire (facultatif)</mat-label><textarea matInput rows="2" formControlName="comment" maxlength="500"></textarea></mat-form-field>}
+        @if (data.mode === 'new-version') {<mat-form-field appearance="outline"><mat-label>Nouvelle date de validité (facultatif)</mat-label><input matInput type="date" formControlName="validUntil" [min]="today" />
+          <mat-hint>Vide : la date actuelle si elle n’est pas dépassée, sinon la même durée à partir d’aujourd’hui.</mat-hint></mat-form-field>}
         @if (data.mode === 'refuse') {<mat-form-field appearance="outline"><mat-label>Motif du refus (facultatif)</mat-label><textarea matInput rows="2" formControlName="reason" maxlength="500"></textarea></mat-form-field>}
       </mat-dialog-content>
       <mat-dialog-actions align="end"><button mat-button type="button" mat-dialog-close>Annuler</button><button mat-flat-button color="primary" [disabled]="busy()"><app-icon [name]="cfg.icon" />{{ cfg.confirm }}</button></mat-dialog-actions>
@@ -48,10 +51,10 @@ const CONFIG: Record<QuotationDialogMode, { title: string; help: string; confirm
 })
 export class QuotationDialog {
   data = inject<QuotationDialogData>(MAT_DIALOG_DATA); private ref = inject(MatDialogRef<QuotationDialog>);
-  cfg = CONFIG[this.data.mode]; methods = SEND_METHODS;
-  form = new FormBuilder().nonNullable.group({ method: ['hand'], recipient: [''], note: [''], to: ['', Validators.email], message: [''], comment: [''], reason: [''] });
+  cfg = CONFIG[this.data.mode]; methods = SEND_METHODS; today = new Date().toISOString().slice(0, 10);
+  form = new FormBuilder().nonNullable.group({ method: ['hand'], recipient: [''], note: [''], to: ['', Validators.email], message: [''], comment: [''], reason: [''], validUntil: [''] });
   busy = signal(false); error = signal('');
-  private fields: Record<QuotationDialogMode, (keyof QuotationDialog['form']['controls'])[]> = { 'mark-sent': ['method', 'recipient', 'note'], email: ['to', 'message'], accept: ['comment'], refuse: ['reason'] };
+  private fields: Record<QuotationDialogMode, (keyof QuotationDialog['form']['controls'])[]> = { 'mark-sent': ['method', 'recipient', 'note'], email: ['to', 'message'], accept: ['comment'], refuse: ['reason'], 'new-version': ['validUntil'] };
   save() {
     if (this.form.invalid) { this.form.markAllAsTouched(); return; }
     const v = this.form.getRawValue(); const body = Object.fromEntries(this.fields[this.data.mode].map((k) => [k, v[k].trim()]).filter(([, x]) => x)) as Record<string, string>;

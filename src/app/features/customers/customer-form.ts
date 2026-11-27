@@ -24,7 +24,7 @@ import { CustomerService } from './customer.service';
       </app-page-header>
       @if (loading()) {<div class="card"><app-skeleton /></div>} @else {
         @if (error()) {<div class="card err" role="alert"><app-icon name="error" />{{ error() }}</div>}
-        <app-customer-fields [form]="form" [code]="code()" />
+        <app-customer-fields [form]="form" [code]="code()" [creating]="!id()" />
         @if (!id()) {
           <section class="card" style="margin-top:16px"><header><app-icon name="group" /><h3>Contacts (facultatif)</h3></header>
             <p class="muted small">Vous pourrez aussi gérer les personnes de contact depuis l’onglet « Contacts » de la fiche.</p>
@@ -61,7 +61,14 @@ export class CustomerForm {
     const payload = id ? body : { ...body, contacts: this.contacts.getRawValue().map((c) => ({ name: c.name, role: c.role || undefined, email: c.email || undefined, phone: c.phone || undefined, isPrimary: c.isPrimary })) };
     (id ? this.svc.update(id, payload) : this.svc.create(payload)).subscribe({
       next: (c) => { this.toast.success(id ? 'Client modifié' : `Client créé (${c.code})`); this.router.navigate(['/customers', c.id]); },
-      error: (e) => { this.error.set(errorMessage(e)); this.saving.set(false); },
+      error: (e) => { this.error.set(errorMessage(e)); this.saving.set(false); this.markDuplicate(e); },
     });
+  }
+  /** Coordonnée déjà utilisée : le champ concerné porte le message du serveur. */
+  private markDuplicate(e: unknown) {
+    const err = (e as { error?: { error?: { code?: string; message: string; details?: { field?: string } } } })?.error?.error;
+    if (err?.code !== 'DUPLICATE_CONTACT_DETAILS' || !err.details?.field) return;
+    const control = err.details.field.startsWith('contacts.') ? this.contacts.get(err.details.field.slice('contacts.'.length)) : this.form.get(err.details.field);
+    control?.setErrors({ duplicate: err.message }); control?.markAsTouched();
   }
 }

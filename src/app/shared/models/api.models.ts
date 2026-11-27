@@ -75,7 +75,7 @@ export interface ProductDto {
   id: string; reference: string; name: string; description: string | null; kind: 'product' | 'service';
   status: ProductStatus; statusLabel: string; statusReason: string | null; statusChangedAt: string | null; isActive: boolean; canUse: boolean;
   categoryId: string | null; categoryName: string | null; familyId: string | null; familyName: string | null; subId: string | null; subName: string | null;
-  unitId: string; unitCode: string | null; unitName: string | null; vatRateCode: string; vatRatePct: number | null; vatRegime: string | null;
+  unitId: string; unitCode: string | null; unitName: string | null; quantityDecimals: number; unitFixed: boolean; vatRateCode: string; vatRatePct: number | null; vatRegime: string | null;
   salePriceMinor: number; saleTtcMinor: number | null; minSalePriceMinor: number | null; maxDiscountPct: number | null; mainSupplierId: string | null; mainSupplierName: string | null; mainSupplierCode: string | null; mainSupplierArchived: boolean;
   minStock: number; hasSerial: boolean; mainPhotoId: string | null; hasPhoto: boolean; packaging: ProductPackaging | null; stockQty: number | null; createdAt?: string;
   access: { purchase: boolean; cost: boolean; customs: boolean; stock: boolean };
@@ -89,7 +89,7 @@ export interface ProductDto {
 export interface CategoryDto { id: string; name: string; parentId: string | null; isArchived: boolean; productCount: number; totalProductCount: number }
 export interface ProductSuggestion { id: string; reference: string; name: string; kind: 'product' | 'service'; mainPhotoId: string | null; familyName: string | null; subName: string | null }
 export interface SupplierOption { id: string; code: string | null; name: string; tradeName: string | null; taxId: string | null; isArchived: boolean }
-export interface UnitDto { id: string; code: string; name: string }
+export interface UnitDto { id: string; code: string; name: string; fixed: boolean; fixedKey: string | null; decimals: number }
 export interface SerialDto { id: string; serialNumber: string; status: string; note: string | null; warehouseId?: string | null; warehouse?: string | null; soldOn?: { type: string | null; id: string | null; number: string | null } | null }
 export interface ReferenceData {
   baseCurrency: string; baseDecimals: number; baseSymbol: string | null; currencies: Currency[]; vatRates: VatRate[];

@@ -16,6 +16,8 @@ import { confirm } from '../../../shared/components/confirm-dialog';
 import { PageHeader } from '../../../shared/components/page-header';
 import { Skeleton } from '../../../shared/components/skeleton';
 import { LineGroup, LinesEditor, lineGroup } from '../lines-editor';
+import { DecimalInput, formatDecimal } from '../../../shared/directives/decimal-input.directive';
+import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
 
 /** Transfert entre magasins : validation = sortie + entrée dans une seule transaction. */
 @Component({
@@ -55,7 +57,7 @@ export class TransferForm {
 
 @Component({
   selector: 'app-transfer-detail',
-  imports: [DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton],
+  imports: [QtyPipe, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton],
   template: `<div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
     <app-page-header [title]="'Transfert ' + d().number" [subtitle]="wh(d().fromWarehouseId) + ' → ' + wh(d().toWarehouseId)">
       @if (d().editable && auth.has('inventory:update')) {<a mat-stroked-button routerLink="edit"><app-icon name="edit" />Modifier</a>}
@@ -64,7 +66,7 @@ export class TransferForm {
     </app-page-header>
     <p><span class="chip" [class.ok]="d().status === 'validated'">{{ d().status === 'validated' ? 'Validé' : 'Brouillon' }}</span> <span class="muted">{{ d().date | date: 'dd/MM/yyyy' : 'UTC' }}</span></p>
     <div class="card"><div class="table-wrap"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px">Article</th><th style="text-align:right;padding:8px">Quantité</th><th style="text-align:left;padding:8px">Séries</th></tr></thead>
-      <tbody>@for (l of d().lines; track l.id) {<tr><td style="padding:8px;border-top:1px solid var(--erp-border)">{{ l.designation }}</td><td style="padding:8px;text-align:right;border-top:1px solid var(--erp-border)">{{ l.quantity }}</td><td style="padding:8px;border-top:1px solid var(--erp-border)">{{ l.serials.join(', ') }}</td></tr>}</tbody></table></div></div>}</div>`,
+      <tbody>@for (l of d().lines; track l.id) {<tr><td style="padding:8px;border-top:1px solid var(--erp-border)">{{ l.designation }}</td><td style="padding:8px;text-align:right;border-top:1px solid var(--erp-border)">{{ l.quantity | qty }}</td><td style="padding:8px;border-top:1px solid var(--erp-border)">{{ l.serials.join(', ') }}</td></tr>}</tbody></table></div></div>}</div>`,
 })
 export class TransferDetail {
   id = input.required<string>(); d = signal<any>(null); names = signal<Record<string, string>>({});  
@@ -92,7 +94,7 @@ export class InventoryStart {
 
 @Component({
   selector: 'app-inventory-detail',
-  imports: [DatePipe, ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatButtonModule, Icon, PageHeader, Skeleton],
+  imports: [QtyPipe, DecimalInput, DatePipe, ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatButtonModule, Icon, PageHeader, Skeleton],
   template: `<div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
     <app-page-header [title]="'Inventaire ' + d().number" [subtitle]="'Magasin ' + wh()">
       @if (d().editable && auth.has('inventory:delete')) {<button mat-stroked-button color="warn" (click)="remove()"><app-icon name="delete" />Supprimer</button>}
@@ -102,8 +104,8 @@ export class InventoryStart {
     <p><span class="chip" [class.ok]="d().status === 'validated'">{{ d().status === 'validated' ? 'Validé' : 'En cours de comptage' }}</span> <span class="muted">{{ d().date | date: 'dd/MM/yyyy' : 'UTC' }}</span></p>
     @if (d().editable) {<div class="card" style="margin-bottom:16px"><mat-form-field appearance="outline" style="width:100%"><mat-label>Motif de l’inventaire (obligatoire s’il y a des écarts)</mat-label><input matInput [formControl]="reason" /></mat-form-field></div>} @else if (d().reason) {<div class="card" style="margin-bottom:16px">Motif : {{ d().reason }}</div>}
     <div class="card"><div class="table-wrap"><table style="width:100%;border-collapse:collapse;min-width:560px"><thead><tr><th style="text-align:left;padding:8px">Article</th><th style="text-align:right;padding:8px">Quantité système</th><th style="text-align:right;padding:8px">Quantité comptée</th><th style="text-align:right;padding:8px">Écart</th></tr></thead>
-      <tbody>@for (l of d().lines; track l.id; let i = $index) {<tr><td style="padding:8px;border-top:1px solid var(--erp-border)">{{ l.reference }} — {{ l.designation }}</td><td style="padding:8px;text-align:right;border-top:1px solid var(--erp-border)">{{ l.systemQty }}</td>
-        <td style="padding:8px;text-align:right;border-top:1px solid var(--erp-border)">@if (d().editable) {<input type="number" min="0" step="0.001" style="width:100px;text-align:right;font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px" [formControl]="counts[i]" [attr.aria-label]="'Quantité comptée ' + l.designation" />} @else {{{ l.countedQty ?? '—' }}}</td>
+      <tbody>@for (l of d().lines; track l.id; let i = $index) {<tr><td style="padding:8px;border-top:1px solid var(--erp-border)">{{ l.reference }} — {{ l.designation }}</td><td style="padding:8px;text-align:right;border-top:1px solid var(--erp-border)">{{ l.systemQty | qty }}</td>
+        <td style="padding:8px;text-align:right;border-top:1px solid var(--erp-border)">@if (d().editable) {<input appDecimal style="width:100px;text-align:right;font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px" [formControl]="counts[i]" [attr.aria-label]="'Quantité comptée ' + l.designation" />} @else {{{ (l.countedQty | qty) || '—' }}}</td>
         <td style="padding:8px;text-align:right;border-top:1px solid var(--erp-border)" [style.color]="gap(i, l) ? 'var(--danger)' : null"><strong>{{ gapText(i, l) }}</strong></td></tr>}</tbody></table></div>
       @if (d().editable) {<p class="muted">Les articles suivis par numéro de série ne sont pas inventoriés par quantité. Le stock est ajusté à la validation, au coût moyen pondéré.</p>}</div>}</div>`,
 })
@@ -114,7 +116,7 @@ export class InventoryDetail {
   ngOnInit() { this.api.get('/warehouses').subscribe((w) => this.names.set(Object.fromEntries(w.map((x: any) => [x.id, x.code])))); this.load(); }  
   load() { this.api.get(`/inventories/${this.id()}`).subscribe({ next: (i) => { this.d.set(i); this.reason.setValue(i.reason ?? ''); this.counts = i.lines.map((l: any) => new FormControl<number | null>(l.countedQty)); }, error: (e) => { this.toast.error(errorMessage(e)); this.router.navigate(['/inventories']); } }); }  
   gap = (i: number, l: any) => { const c = this.d().editable ? this.counts[i]?.value : l.countedQty; return c != null && c !== '' as unknown && Number(c) !== l.systemQty; };  
-  gapText = (i: number, l: any) => { const c = this.d().editable ? this.counts[i]?.value : l.countedQty; if (c == null) return '—'; const g = Math.round((Number(c) - l.systemQty) * 1000) / 1000; return g > 0 ? `+${g}` : `${g}`; };  
+  gapText = (i: number, l: any) => { const c = this.d().editable ? this.counts[i]?.value : l.countedQty; if (c == null) return '—'; const g = Math.round((Number(c) - l.systemQty) * 1000) / 1000; return g > 0 ? `+${formatDecimal(g)}` : formatDecimal(g); };  
   private body() { return { reason: this.reason.value || undefined, lines: this.d().lines.map((l: any, i: number) => ({ productId: l.productId, countedQty: this.counts[i]!.value === null || (this.counts[i]!.value as unknown) === '' ? null : Number(this.counts[i]!.value) })) }; }  
   save(after?: () => void) { this.api.put(`/inventories/${this.id()}`, this.body()).subscribe({ next: (i) => { this.d.set(i); if (after) after(); else this.toast.success('Comptages enregistrés'); }, error: (e) => this.toast.error(errorMessage(e)) }); }
   validate() { confirm(this.dialog, { title: 'Valider l’inventaire', message: 'Les écarts entre quantités comptées et quantités en stock seront régularisés par des mouvements d’ajustement au CMP. Cette action est définitive.', confirmLabel: 'Valider' })

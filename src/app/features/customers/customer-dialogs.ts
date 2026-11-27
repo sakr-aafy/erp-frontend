@@ -90,7 +90,7 @@ export class ActivityDialog {
 }
 
 // ---------- Document ----------
-export interface DocumentDialogData { document?: DocumentDto; types?: { value: string; label: string }[]; submit: (v: { type: string; description?: string; file: File | null }) => Observable<unknown> }
+export interface DocumentDialogData { document?: DocumentDto; types?: { value: string; label: string }[]; /** Devis : rattachement facultatif à une version. */ versions?: number[]; version?: number | null; submit: (v: { type: string; description?: string; file: File | null; version?: number }) => Observable<unknown> }
 const MAX = 10 * 1024 * 1024; const ACCEPT = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx';
 @Component({
   selector: 'app-document-dialog',
@@ -102,6 +102,7 @@ const MAX = 10 * 1024 * 1024; const ACCEPT = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx';
         @if (error()) {<div class="err" role="alert"><app-icon name="error" />{{ error() }}</div>}
         <mat-form-field appearance="outline"><mat-label>Type de document</mat-label><mat-select formControlName="type">@for (t of types; track t.value) {<mat-option [value]="t.value">{{ t.label }}</mat-option>}</mat-select></mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Description (facultatif)</mat-label><input matInput formControlName="description" maxlength="300" /></mat-form-field>
+        @if (data.versions?.length) {<mat-form-field appearance="outline"><mat-label>Version concernée (facultatif)</mat-label><mat-select formControlName="version"><mat-option [value]="0">Aucune en particulier</mat-option>@for (v of data.versions; track v) {<mat-option [value]="v">Version {{ v }}</mat-option>}</mat-select></mat-form-field>}
         @if (!data.document) {
           <label class="drop" [class.has]="file()">
             <input type="file" [accept]="accept" (change)="pick($event)" hidden />
@@ -117,7 +118,7 @@ const MAX = 10 * 1024 * 1024; const ACCEPT = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx';
 })
 export class DocumentDialog {
   data = inject<DocumentDialogData>(MAT_DIALOG_DATA); private ref = inject(MatDialogRef<DocumentDialog>); types: { value: string; label: string }[] = this.data.types ?? DOC_TYPES; accept = ACCEPT; size = formatBytes;
-  form = new FormBuilder().nonNullable.group({ type: [this.data.document?.type ?? this.types[0]!.value], description: [this.data.document?.description ?? ''] });
+  form = new FormBuilder().nonNullable.group({ type: [this.data.document?.type ?? this.types[0]!.value], description: [this.data.document?.description ?? ''], version: [this.data.version ?? 0] });
   file = signal<File | null>(null); busy = signal(false); error = signal('');
   pick(e: Event) {
     const f = (e.target as HTMLInputElement).files?.[0] ?? null; this.error.set('');
@@ -127,7 +128,7 @@ export class DocumentDialog {
   save() {
     if (!this.data.document && !this.file()) { this.error.set('Sélectionnez un fichier.'); return; }
     const v = this.form.getRawValue(); this.busy.set(true); this.error.set('');
-    this.data.submit({ type: v.type, description: v.description.trim(), file: this.file() }).subscribe({ next: (r) => this.ref.close(r), error: (e) => { this.error.set(errorMessage(e)); this.busy.set(false); } });
+    this.data.submit({ type: v.type, description: v.description.trim(), file: this.file(), ...(v.version && { version: v.version }) }).subscribe({ next: (r) => this.ref.close(r), error: (e) => { this.error.set(errorMessage(e)); this.busy.set(false); } });
   }
 }
 

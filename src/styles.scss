@@ -145,7 +145,7 @@ table.lines th.r, table.lines td.r, table.t th.r, table.t td.r { text-align: rig
 .toolbar-row .mat-mdc-form-field { width: 200px; flex: 0 1 200px; }
 .toolbar-row .mat-mdc-form-field:first-child { width: 320px; flex: 1 1 260px; max-width: 420px; }
 /* Sélecteurs encapsulés dans leur composant : le champ occupe la largeur de l'emplacement, sans déborder sur le filtre voisin */
-.toolbar-row :is(app-supplier-picker, app-article-search, app-supplier-search) > .mat-mdc-form-field:first-child { width: 100%; max-width: 100%; }
+.toolbar-row :is(app-supplier-picker, app-article-search, app-supplier-search, app-customer-search) > .mat-mdc-form-field:first-child { width: 100%; max-width: 100%; }
 .mat-mdc-form-field-icon-prefix { padding-left: 12px !important; app-icon { color: var(--muted); margin-right: 4px; } }
 .mat-mdc-form-field-icon-suffix app-icon { color: var(--muted); }
 .mat-mdc-form-field-subscript-wrapper { font-size: 12px; }

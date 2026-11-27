@@ -25,6 +25,14 @@ describe('formulaire client', () => {
     f.controls.paymentPreset.setValue('custom'); f.controls.paymentDelayDays.setValue(45); applyPreset(f); expect(f.controls.paymentDelayDays.value).toBe(45);
     expect(customerBody(f, ref, false).paymentTerms).toBe('45 jours'); f.controls.paymentPreset.setValue('30'); applyPreset(f); expect(customerBody(f, ref, false).paymentTerms).toBe('30 jours');
   });
+  it('une condition de la liste fixe son libellé et son délai ; sans délai, les échéances se saisissent sur la facture', () => {
+    const f = form(); f.patchValue({ name: 'X1' });
+    f.controls.paymentPreset.setValue('term:Paiement avant expédition'); applyPreset(f, { label: 'Paiement avant expédition', delayDays: null });
+    expect(customerBody(f, ref, false)).toMatchObject({ paymentTerms: 'Paiement avant expédition', paymentTermsCustom: true, paymentDelayDays: 0 });
+    f.controls.paymentPreset.setValue('term:Fin de mois'); applyPreset(f, { label: 'Fin de mois', delayDays: 45 });
+    expect(customerBody(f, ref, false)).toMatchObject({ paymentTerms: 'Fin de mois', paymentTermsCustom: false, paymentDelayDays: 45 });
+    f.controls.paymentPreset.setValue('90'); applyPreset(f); expect(customerBody(f, ref, false)).toMatchObject({ paymentTerms: '90 jours', paymentDelayDays: 90 });
+  });
   it('corps de l’API : montants en plus petite unité, champs vides ignorés à la création et effacés (null) à la modification', () => {
     const f = form(); f.patchValue({ name: ' Client ', creditLimit: 5000.5, tradeName: '', phone: '' });
     const create = customerBody(f, ref, false); expect(create).toMatchObject({ name: 'Client', creditLimitMinor: 5_000_500, tradeName: undefined, phone: undefined });

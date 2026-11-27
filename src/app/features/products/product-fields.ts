@@ -44,13 +44,13 @@ const HEAD = `header{display:flex;align-items:center;gap:10px;margin-bottom:14px
           <mat-hint>Unique par société (casse ignorée)</mat-hint>@if (c.reference.invalid && c.reference.touched) {<mat-error>Code requis (60 caractères max)</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Désignation (nom de l’article)</mat-label><input matInput formControlName="name" required />
           @if (c.name.invalid && c.name.touched) {<mat-error>2 caractères minimum</mat-error>}</mat-form-field>
-        <mat-form-field appearance="outline">@if (canManage) {<button matPrefix mat-icon-button class="gear" type="button" (click)="$event.stopPropagation(); manage('category')" aria-label="Gérer les catégories" matTooltip="Gérer les catégories"><app-icon name="settings" /></button>}
+        <mat-form-field appearance="outline">@if (canManage) {<button matPrefix mat-icon-button class="gear" type="button" (click)="$event.stopPropagation(); manage()" aria-label="Gérer les catégories" matTooltip="Gérer les catégories"><app-icon name="settings" /></button>}
           <mat-label>Catégorie</mat-label><mat-select formControlName="familyId" (selectionChange)="c.subId.setValue('')"><mat-option value="">Aucune</mat-option>@for (f of families(); track f.id) {<mat-option [value]="f.id">{{ f.name }}@if (f.isArchived) { (archivée)}</mat-option>}</mat-select></mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Sous-catégorie</mat-label><mat-select formControlName="subId"><mat-option value="">Aucune</mat-option>@for (s of subs(); track s.id) {<mat-option [value]="s.id">{{ s.name }}@if (s.isArchived) { (archivée)}</mat-option>}</mat-select>
           @if (!c.familyId.value) {<mat-hint>Choisissez d’abord une catégorie</mat-hint>} @else if (!subs().length) {<mat-hint>Cette catégorie n’a pas de sous-catégorie</mat-hint>} @else {<mat-hint>Facultative</mat-hint>}</mat-form-field>
-        <mat-form-field appearance="outline">@if (canManage) {<button matPrefix mat-icon-button class="gear" type="button" (click)="$event.stopPropagation(); manage('unit')" aria-label="Gérer les unités de vente" matTooltip="Gérer les unités de vente"><app-icon name="settings" /></button>}
-          <mat-label>Unité de vente</mat-label><mat-select formControlName="unitId" required>@for (u of units(); track u.id) {<mat-option [value]="u.id">{{ u.name }}</mat-option>}</mat-select>
-          @if (c.unitId.invalid && c.unitId.touched) {<mat-error>Unité requise (utilisez l’icône ⚙ pour en créer)</mat-error>}</mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Unité de vente</mat-label><mat-select formControlName="unitId" required>@for (u of unitOptions(); track u.id) {<mat-option [value]="u.id">{{ u.name }}@if (!u.fixed) { (unité historique)}</mat-option>}</mat-select>
+          <mat-hint>{{ precision() }}</mat-hint>@if (c.unitId.invalid && c.unitId.touched) {<mat-error>Unité requise</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline" class="wide"><mat-label>Description</mat-label><textarea matInput rows="3" formControlName="description"></textarea></mat-form-field>
       </div>
     </form>`,
@@ -81,12 +81,14 @@ export class FieldsGeneral {
   ngOnInit() { this.load(); }
   private load() {
     this.svc.categories().subscribe((c) => this.cats.set(c));
-    this.svc.units().subscribe((u) => { this.units.set(u); if (this.preselectUnit() && u.length === 1 && !this.c.unitId.value) this.c.unitId.setValue(u[0]!.id); });
+    this.svc.units().subscribe((u) => { this.units.set(u); const piece = u.find((x) => x.fixedKey === 'piece'); if (this.preselectUnit() && piece && !this.c.unitId.value) this.c.unitId.setValue(piece.id); });
   }
-  manage(kind: 'category' | 'unit') {
-    openCatalog(this.dialog, kind).subscribe(() => {
+  /** Les trois unités fixes, plus l'unité historique déjà portée par l'article. */
+  unitOptions() { return this.units().filter((u) => u.fixed || u.id === this.c.unitId.value); }
+  precision() { const u = this.units().find((x) => x.id === this.c.unitId.value); return u ? (u.decimals === 0 ? 'Quantités entières' : `Quantités : ${u.decimals} chiffre(s) après la virgule`) : 'Pièce, Mètre ou Kilogramme'; }
+  manage() {
+    openCatalog(this.dialog).subscribe(() => {
       this.svc.categories().subscribe((cats) => { this.cats.set(cats); if (this.c.familyId.value && !cats.some((x) => x.id === this.c.familyId.value)) this.c.familyId.setValue(''); if (this.c.subId.value && !cats.some((x) => x.id === this.c.subId.value)) this.c.subId.setValue(''); });
-      this.svc.units().subscribe((u) => { this.units.set(u); if (!u.some((x) => x.id === this.c.unitId.value)) this.c.unitId.setValue(''); });
     });
   }
 }
@@ -152,13 +154,13 @@ export class FieldsPackaging {
           }
           <app-supplier-picker [control]="c.mainSupplier" label="Fournisseur habituel" />
           <mat-form-field appearance="outline"><mat-label>Coût de revient estimé saisi ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="estimatedCost" />
-            <mat-hint>{{ foreign() ? 'Vide : contre-valeur estimée' : 'Vide : prix d’achat' }}</mat-hint></mat-form-field>
+            <mat-hint>{{ foreign() ? 'Vide : coût d’achat HT converti' : 'Vide : prix d’achat' }}</mat-hint></mat-form-field>
         </div>
         <div class="costs" role="status" aria-live="polite">
           @if (estimateRate(); as rate) {
             <div class="estimate"><span class="muted">Taux de change estimatif</span><strong>1 {{ c.purchaseCurrency.value }} = {{ num(rate) }} {{ ref.symbol() }}</strong>
               @if (canEditRate) {<button mat-button type="button" class="edit-rate" (click)="editRate()"><app-icon name="edit" />Modifier le taux</button>}</div>
-            <div><span class="muted">Contre-valeur estimée</span><strong>{{ (preview()?.estimatedPurchaseMinor ?? null) === null ? '—' : (preview()!.estimatedPurchaseMinor | money) }}</strong><span class="muted small">Prix en {{ c.purchaseCurrency.value }} × taux estimatif</span></div>
+            <div><span class="muted">Coût d’achat HT en {{ ref.symbol() }}</span><strong>{{ (preview()?.estimatedPurchaseMinor ?? null) === null ? '—' : (preview()!.estimatedPurchaseMinor | money) }}</strong><span class="muted small">Prix en {{ c.purchaseCurrency.value }} × taux estimatif</span></div>
           } @else if (foreign()) {
             <div><span class="muted">Contre-valeur en {{ base() }}</span><strong>{{ realRate() ? 'Au taux du ' + realRate()!.rateDate.slice(0, 10) : '—' }}</strong><span class="muted small">@if (realRate()) {1 {{ c.purchaseCurrency.value }} = {{ realRate()!.rate }} {{ base() }} (taux réel enregistré)} @else {Le dernier taux réel enregistré est appliqué à l’enregistrement.}</span></div>
           }
@@ -182,8 +184,8 @@ export class FieldsPackaging {
         @if (preview()?.margins; as m) {
           <div class="margins" role="status" aria-live="polite">
             <div><span class="muted">Marge HT</span><strong [class.neg]="m.marginHtMinor < 0">{{ m.marginHtMinor | money }}</strong></div>
-            <div><span class="muted">Taux de marge (sur coût)</span><strong>{{ m.marginRatePct === null ? '—' : m.marginRatePct + ' %' }}</strong></div>
-            <div><span class="muted">Taux de marque (sur prix de vente)</span><strong>{{ m.markPct === null ? '—' : m.markPct + ' %' }}</strong></div>
+            <div><span class="muted" title="(Prix de vente HT − coût de revient HT) ÷ coût de revient HT × 100">Taux de marge (sur coût)</span><strong>{{ m.marginRatePct === null ? '—' : m.marginRatePct + ' %' }}</strong></div>
+            <div><span class="muted" title="(Prix de vente HT − coût de revient HT) ÷ prix de vente HT × 100">Taux de marge (sur prix de vente)</span><strong>{{ m.markPct === null ? '—' : m.markPct + ' %' }}</strong></div>
             <div><span class="muted">Marge TTC (indicative)</span><strong [class.neg]="m.marginTtcMinor < 0">{{ m.marginTtcMinor | money }}</strong><span class="muted small">{{ m.marginTtcRatePct === null ? '' : m.marginTtcRatePct + ' %' }}</span></div>
           </div>
           <p class="muted small">Marge HT = prix de vente HT − coût de revient. Marge TTC indicative = prix TTC − (coût + TVA sur coût) : la TVA n’est jamais comptée comme un bénéfice (formule à valider avec le comptable). Coût retenu : coût réel, sinon coût de revient estimé.</p>

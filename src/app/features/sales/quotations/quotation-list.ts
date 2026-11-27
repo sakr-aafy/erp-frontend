@@ -25,7 +25,7 @@ import { QUOTATION_STATUS_STYLE, SalesDoc, STATUS_LABELS } from '../sales.models
 import { SalesService } from '../sales.service';
 import { QuotationActions } from './quotation-actions.service';
 
-const STATUSES = ['pending', 'sent', 'accepted', 'refused', 'expired'];
+const STATUSES = ['draft', 'sent', 'accepted', 'refused', 'expired', 'cancelled'];
 
 /** Liste des devis : compteurs réels par statut (cliquables), recherche, filtres, tri et pagination côté serveur. */
 @Component({
@@ -33,7 +33,7 @@ const STATUSES = ['pending', 'sent', 'accepted', 'refused', 'expired'];
   imports: [DatePipe, ReactiveFormsModule, RouterLink, MatTableModule, MatPaginatorModule, MatSortModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, Icon, PageHeader, EmptyState, Skeleton, MoneyPipe, RowActions],
   template: `
     <div class="page">
-      <app-page-header title="Devis" subtitle="Création, envoi, suivi des statuts et conversion en proforma ou facture">
+      <app-page-header title="Devis" subtitle="Création, envoi, versions et conversion des devis acceptés en facture proforma">
         @if (auth.has('reports:view')) {<a mat-stroked-button routerLink="/reports/quotations"><app-icon name="download" />Rapport et export</a>}
         @if (auth.has('quotations:create')) {<a mat-flat-button color="primary" routerLink="new"><app-icon name="add" />Nouveau devis</a>}
       </app-page-header>
@@ -42,7 +42,7 @@ const STATUSES = ['pending', 'sent', 'accepted', 'refused', 'expired'];
           @for (k of statuses; track k) {<button type="button" class="counter" [class.on]="status() === k" [attr.aria-pressed]="status() === k" (click)="toggle(k)">
             <span class="chip {{ style[k]!.chip }}"><app-icon [name]="style[k]!.icon" />{{ label(k) }}</span><strong>{{ s[k] }}</strong></button>}
         </div>
-        <p class="muted figures">Montant TTC en cours (en attente et envoyés) : <strong>{{ s['openTotalMinor'] | money }}</strong> · Acceptés : <strong>{{ s['acceptedTotalMinor'] | money }}</strong> · Taux de conversion en facture : <strong>{{ s['conversionRatePct'] }} %</strong></p>
+        <p class="muted figures">Montant TTC envoyé, en attente de réponse : <strong>{{ s['openTotalMinor'] | money }}</strong> · Acceptés : <strong>{{ s['acceptedTotalMinor'] | money }}</strong> · Taux de transformation : <strong>{{ s['conversionRatePct'] }} %</strong></p>
       }
       <div class="card">
         <div class="toolbar-row">
@@ -56,7 +56,7 @@ const STATUSES = ['pending', 'sent', 'accepted', 'refused', 'expired'];
         @else if (!items().length) {<app-empty-state icon="request_quote" message="Aucun devis ne correspond aux critères." />}
         @else {
           <div class="table-wrap"><table mat-table class="responsive compact" [dataSource]="items()" matSort (matSortChange)="onSort($event)">
-            <ng-container matColumnDef="number"><th mat-header-cell *matHeaderCellDef mat-sort-header="number">Numéro</th><td mat-cell *matCellDef="let d" data-label="Numéro"><a [routerLink]="[d.id]" class="lnk" (click)="$event.stopPropagation()"><strong>{{ d.number }}</strong></a></td></ng-container>
+            <ng-container matColumnDef="number"><th mat-header-cell *matHeaderCellDef mat-sort-header="number">Numéro</th><td mat-cell *matCellDef="let d" data-label="Numéro"><a [routerLink]="[d.id]" class="lnk" (click)="$event.stopPropagation()"><strong>{{ d.number }}</strong></a>@if (d.version > 1) {<span class="muted ver">v{{ d.version }}</span>}</td></ng-container>
             <ng-container matColumnDef="customer"><th mat-header-cell *matHeaderCellDef mat-sort-header="customer">Client</th><td mat-cell *matCellDef="let d" data-label="Client">{{ d.customer.name }}</td></ng-container>
             <ng-container matColumnDef="date"><th mat-header-cell *matHeaderCellDef mat-sort-header="issueDate">Date de création</th><td mat-cell *matCellDef="let d" data-label="Création">{{ d.issueDate | date: 'dd/MM/yyyy' : 'UTC' }}</td></ng-container>
             <ng-container matColumnDef="validity"><th mat-header-cell *matHeaderCellDef mat-sort-header="validUntil">Validité</th><td mat-cell *matCellDef="let d" data-label="Validité">{{ d.validUntil | date: 'dd/MM/yyyy' : 'UTC' }}</td></ng-container>
@@ -70,9 +70,9 @@ const STATUSES = ['pending', 'sent', 'accepted', 'refused', 'expired'];
         <mat-paginator [length]="total()" [pageSize]="pageSize()" [pageIndex]="page()" [pageSizeOptions]="[10, 20, 50]" (page)="onPage($event)" />
       </div>
     </div>`,
-  styles: `.counters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:8px}.counter{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);font:inherit;cursor:pointer;box-shadow:var(--shadow-sm);transition:border-color var(--t-fast)}
+  styles: `.counters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:8px}.counter{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);font:inherit;cursor:pointer;box-shadow:var(--shadow-sm);transition:border-color var(--t-fast)}
     .counter:hover{border-color:var(--brand)}.counter:focus-visible{outline:none;box-shadow:var(--ring)}.counter.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand) inset}.counter strong{font-size:22px;font-variant-numeric:tabular-nums}.chip::before{display:none}.chip app-icon{--icon-size:.85rem}.figures{font-size:13px;margin:0 0 16px}
-    table.compact th,table.compact td{padding:0 8px!important}table.compact th.mat-mdc-header-cell{font-size:11px}.date{max-width:160px!important}.lnk{color:var(--brand);text-decoration:none;white-space:nowrap}.row{cursor:pointer}td.r{white-space:nowrap}.act{width:56px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+    table.compact th,table.compact td{padding:0 8px!important}table.compact th.mat-mdc-header-cell{font-size:11px}.date{max-width:160px!important}.ver{margin-left:6px;font-size:12px}.lnk{color:var(--brand);text-decoration:none;white-space:nowrap}.row{cursor:pointer}td.r{white-space:nowrap}.act{width:56px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
     @media (max-width:900px){.counters{grid-template-columns:repeat(2,minmax(0,1fr))}}`,
 })
 export class QuotationList {

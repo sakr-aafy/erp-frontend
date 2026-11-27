@@ -19,6 +19,7 @@ import { PageHeader } from '../../../shared/components/page-header';
 import { prompt } from '../../../shared/components/prompt-dialog';
 import { Skeleton } from '../../../shared/components/skeleton';
 import { MoneyPipe } from '../../../shared/pipes/money.pipe';
+import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
 
 export const STATUS_LABELS: Record<string, string> = { draft: 'Brouillon', ordered: 'Commandé', shipped: 'Expédié', customs: 'En douane', arrived: 'Arrivé', closed: 'Clôturé', integrated: 'Intégré au stock', cancelled: 'Annulé' };
 const NEXT: Record<string, string> = { draft: 'ordered', ordered: 'shipped', shipped: 'customs', customs: 'arrived' };
@@ -76,7 +77,7 @@ export class IntegrateDialog {
 /** Dossier d'importation : statuts, frais annexes (recalcul automatique), coût de revient rendu, documents, clôture, intégration au stock. */
 @Component({
   selector: 'app-import-detail',
-  imports: [DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [QtyPipe, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
       <app-page-header [title]="'Dossier d’importation ' + d().number" [subtitle]="d().supplier?.name + ' — ' + d().currency + ' (taux ' + d().exchangeRate + ' au ' + (d().exchangeRateDate | date: 'dd/MM/yyyy' : 'UTC') + ')'">
@@ -92,7 +93,7 @@ export class IntegrateDialog {
       @if (d().status === 'closed') {<div class="card info">Dossier clôturé : les frais sont figés et le coût de revient rendu est définitif. Il peut être intégré au stock.</div>}
       <div class="kpis"><div class="card"><span class="muted">Valeur FOB (devise de base)</span><strong>{{ d().totals.fobBaseMinor | money }}</strong></div><div class="card"><span class="muted">Frais annexes</span><strong>{{ d().totals.chargesBaseMinor | money }}</strong></div><div class="card"><span class="muted">Coût de revient rendu</span><strong>{{ d().totals.landedMinor | money }}</strong></div></div>
       <div class="card"><h3>Coût de revient par article</h3><div class="table-wrap"><table class="lines"><thead><tr><th>Article</th><th class="r">Qté</th><th class="r">FOB</th><th class="r">Frais répartis</th><th class="r">Coût rendu</th><th class="r">Coût unitaire</th></tr></thead>
-        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.reference }} — {{ l.designation }}</td><td class="r">{{ l.quantity }}</td><td class="r">{{ l.fobBaseMinor | money }}</td><td class="r">{{ l.allocatedChargesMinor | money }}</td><td class="r"><strong>{{ l.landedTotalMinor | money }}</strong></td><td class="r">{{ l.unitLandedMinor | money }}</td></tr>}</tbody></table></div></div>
+        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.reference }} — {{ l.designation }}</td><td class="r">{{ l.quantity | qty }}</td><td class="r">{{ l.fobBaseMinor | money }}</td><td class="r">{{ l.allocatedChargesMinor | money }}</td><td class="r"><strong>{{ l.landedTotalMinor | money }}</strong></td><td class="r">{{ l.unitLandedMinor | money }}</td></tr>}</tbody></table></div></div>
       <div class="card" style="margin-top:16px"><div class="toolbar-row"><h3 style="margin:0">Frais annexes</h3><span class="spacer"></span>@if (d().chargesOpen && auth.has('imports:update')) {<button mat-flat-button color="primary" (click)="charge()"><app-icon name="add" />Ajouter un frais</button>}</div>
         @if (!d().charges.length) {<p class="muted">Aucun frais. Le coût de revient est recalculé automatiquement à chaque ajout.</p>} @else {<div class="table-wrap"><table class="lines"><thead><tr><th>Type</th><th class="r">Montant</th><th class="r">Taux</th><th class="r">En devise de base</th><th>Répartition</th><th></th></tr></thead>
           <tbody>@for (c of d().charges; track c.id) {<tr><td>{{ chargeLabel(c.type) }}<br><span class="muted">{{ c.label }}</span></td><td class="r">{{ fmtForeign(c) }} {{ c.currency }}</td><td class="r">{{ c.exchangeRate }}</td><td class="r"><strong>{{ c.amountBaseMinor | money }}</strong></td><td>{{ c.allocation === 'value' ? 'Valeur' : 'Quantité' }}</td>

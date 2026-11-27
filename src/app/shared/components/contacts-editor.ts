@@ -22,9 +22,9 @@ export const contactGroup = (fb: FormBuilder, c?: Contact): ContactGroup => fb.n
         <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Nom</mat-label><input matInput formControlName="name" />
           @if (c.controls.name.invalid) {<mat-error>Requis</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Fonction</mat-label><input matInput formControlName="role" /></mat-form-field>
-        <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Téléphone</mat-label><input matInput formControlName="phone" /></mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Téléphone</mat-label><input matInput formControlName="phone" />@if (c.controls.phone.invalid) {<mat-error>{{ c.controls.phone.errors?.['duplicate'] ?? 'Numéro invalide' }}</mat-error>}</mat-form-field>
         <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>E-mail</mat-label><input matInput type="email" formControlName="email" />
-          @if (c.controls.email.invalid) {<mat-error>E-mail invalide</mat-error>}</mat-form-field>
+          @if (c.controls.email.invalid) {<mat-error>{{ c.controls.email.errors?.['duplicate'] ?? 'E-mail invalide' }}</mat-error>}</mat-form-field>
         <mat-checkbox formControlName="isPrimary" (change)="onPrimary($index, $event.checked)">Principal</mat-checkbox>
         <button mat-icon-button type="button" (click)="array().removeAt($index)" aria-label="Retirer le contact"><app-icon name="delete" /></button>
       </div>

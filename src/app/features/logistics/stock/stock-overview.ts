@@ -23,22 +23,25 @@ import { ExportMenu } from '../../../shared/components/export-menu';
 import { PageHeader } from '../../../shared/components/page-header';
 import { Skeleton } from '../../../shared/components/skeleton';
 import { MoneyPipe } from '../../../shared/pipes/money.pipe';
+import { DecimalInput } from '../../../shared/directives/decimal-input.directive';
+import { quantityError, quantityValidator } from '../../../shared/utils/quantity';
+import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
 
 const STATUS: Record<string, string> = { ok: 'Normal', low: 'Sous le seuil', out: 'Rupture' };
 
 /** Entrée / sortie manuelle (régularisation) : motif obligatoire, coût en entrée, autorisation explicite du stock négatif. */
 @Component({
   selector: 'app-movement-dialog',
-  imports: [ReactiveFormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatAutocompleteModule, MatSlideToggleModule],
+  imports: [DecimalInput, ReactiveFormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatAutocompleteModule, MatSlideToggleModule],
   template: `
     <h2 mat-dialog-title>Mouvement de stock manuel</h2>
     <form [formGroup]="form" (ngSubmit)="save()">
       <mat-dialog-content class="c">
         @if (error()) {<div style="color:var(--danger)" role="alert">{{ error() }}</div>}
         <mat-form-field appearance="outline"><mat-label>Type</mat-label><mat-select formControlName="direction"><mat-option value="in">Entrée</mat-option><mat-option value="out">Sortie</mat-option></mat-select></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Article</mat-label><input matInput [formControl]="productCtrl" [matAutocomplete]="pa" /><mat-autocomplete #pa="matAutocomplete" [displayWith]="show" (optionSelected)="product.set($event.option.value)">@for (p of products(); track p.id) {<mat-option [value]="p">{{ p.reference }} — {{ p.name }}</mat-option>}</mat-autocomplete></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Article</mat-label><input matInput [formControl]="productCtrl" [matAutocomplete]="pa" /><mat-autocomplete #pa="matAutocomplete" [displayWith]="show" (optionSelected)="product.set($event.option.value); form.controls.quantity.updateValueAndValidity()">@for (p of products(); track p.id) {<mat-option [value]="p">{{ p.reference }} — {{ p.name }}</mat-option>}</mat-autocomplete></mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Magasin</mat-label><mat-select formControlName="warehouseId">@for (w of warehouses(); track w.id) {<mat-option [value]="w.id">{{ w.code }} — {{ w.name }}</mat-option>}</mat-select></mat-form-field>
-        <mat-form-field appearance="outline"><mat-label>Quantité</mat-label><input matInput type="number" min="0.001" step="0.001" formControlName="quantity" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Quantité</mat-label><input matInput appDecimal formControlName="quantity" />@if (form.controls.quantity.invalid) {<mat-error>{{ qtyError(form.controls.quantity) }}</mat-error>}</mat-form-field>
         @if (form.controls.direction.value === 'in') {<mat-form-field appearance="outline"><mat-label>Coût unitaire ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="1 / 10 ** ref.decimals()" formControlName="unitCost" /></mat-form-field>}
         <mat-form-field appearance="outline"><mat-label>N° de série (un par ligne, si article suivi par série)</mat-label><textarea matInput rows="2" formControlName="serials"></textarea></mat-form-field>
         <mat-form-field appearance="outline"><mat-label>Motif (obligatoire)</mat-label><input matInput formControlName="reason" />@if (form.controls.reason.invalid && form.controls.reason.touched) {<mat-error>3 caractères minimum</mat-error>}</mat-form-field>
@@ -50,9 +53,9 @@ const STATUS: Record<string, string> = { ok: 'Normal', low: 'Sous le seuil', out
 })
 export class MovementDialog {
   private api = inject(Api); private ref_ = inject(MatDialogRef<MovementDialog>); ref = inject(ReferenceDataService); auth = inject(AuthService);
-  warehouses = signal<{ id: string; code: string; name: string }[]>([]); products = signal<{ id: string; reference: string; name: string }[]>([]); product = signal<{ id: string } | null>(null);
+  warehouses = signal<{ id: string; code: string; name: string }[]>([]); products = signal<{ id: string; reference: string; name: string; quantityDecimals?: number }[]>([]); product = signal<{ id: string; quantityDecimals?: number } | null>(null); qtyError = quantityError;
   productCtrl = new FormControl<string | { id: string; reference: string; name: string }>('', { nonNullable: true });
-  form = new FormBuilder().nonNullable.group({ direction: ['in' as 'in' | 'out'], warehouseId: ['', Validators.required], quantity: [1, [Validators.required, Validators.min(0.001)]], unitCost: [0], serials: [''], reason: ['', [Validators.required, Validators.minLength(3)]], allowNegative: [false] });
+  form = new FormBuilder().nonNullable.group({ direction: ['in' as 'in' | 'out'], warehouseId: ['', Validators.required], quantity: [1 as number | null, quantityValidator(() => this.product()?.quantityDecimals ?? 3)], unitCost: [0], serials: [''], reason: ['', [Validators.required, Validators.minLength(3)]], allowNegative: [false] });
   loading = signal(false); error = signal('');
   show = (p: { reference: string; name: string } | string | null) => (typeof p === 'string' ? p : p ? `${p.reference} — ${p.name}` : '');
   constructor() {
@@ -70,7 +73,7 @@ export class MovementDialog {
 /** Tableau de bord du stock : état par article, seuils, valorisation CMP, alertes. */
 @Component({
   selector: 'app-stock-overview',
-  imports: [ReactiveFormsModule, RouterLink, MatTableModule, MatPaginatorModule, MatButtonModule, Icon, MatFormFieldModule, MatInputModule, MatSelectModule, PageHeader, EmptyState, Skeleton, ExportMenu, MoneyPipe],
+  imports: [QtyPipe, ReactiveFormsModule, RouterLink, MatTableModule, MatPaginatorModule, MatButtonModule, Icon, MatFormFieldModule, MatInputModule, MatSelectModule, PageHeader, EmptyState, Skeleton, ExportMenu, MoneyPipe],
   template: `
     <div class="page">
       <app-page-header title="Stock" subtitle="État des stocks, valorisation au coût moyen pondéré (CMP) et alertes de seuil">
@@ -94,7 +97,7 @@ export class MovementDialog {
         @if (loading() && !items().length) {<app-skeleton />} @else if (!items().length) {<app-empty-state icon="inventory" message="Aucun article." />} @else {
         <div class="table-wrap"><table mat-table [dataSource]="items()">
           <ng-container matColumnDef="ref"><th mat-header-cell *matHeaderCellDef>Article</th><td mat-cell *matCellDef="let r"><a [routerLink]="['movements']" [queryParams]="{ productId: r.productId }" class="lnk"><strong>{{ r.reference }}</strong></a><br><span class="muted">{{ r.name }}</span></td></ng-container>
-          <ng-container matColumnDef="qty"><th mat-header-cell *matHeaderCellDef style="text-align:right">Quantité</th><td mat-cell *matCellDef="let r" style="text-align:right"><strong>{{ r.qty }}</strong> {{ r.unit }}</td></ng-container>
+          <ng-container matColumnDef="qty"><th mat-header-cell *matHeaderCellDef style="text-align:right">Quantité</th><td mat-cell *matCellDef="let r" style="text-align:right"><strong>{{ r.qty | qty }}</strong> {{ r.unit }}</td></ng-container>
           <ng-container matColumnDef="min"><th mat-header-cell *matHeaderCellDef style="text-align:right">Seuil min.</th><td mat-cell *matCellDef="let r" style="text-align:right">{{ r.minStock || '—' }}</td></ng-container>
           <ng-container matColumnDef="cmp"><th mat-header-cell *matHeaderCellDef style="text-align:right">CMP</th><td mat-cell *matCellDef="let r" style="text-align:right">{{ r.avgCostMinor | money }}</td></ng-container>
           <ng-container matColumnDef="val"><th mat-header-cell *matHeaderCellDef style="text-align:right">Valeur</th><td mat-cell *matCellDef="let r" style="text-align:right">{{ r.valueMinor | money }}</td></ng-container>

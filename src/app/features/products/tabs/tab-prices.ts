@@ -31,10 +31,10 @@ import { TabEditBase } from './tab-edit-base';
           @if (p().purchaseCurrency) {<dt>Prix d’achat HT en {{ p().purchaseCurrency }}</dt><dd><strong>{{ foreign() }} {{ p().purchaseCurrency }}</strong></dd>}
           @else {<dt>Prix d’achat HT</dt><dd><strong>{{ p().purchasePriceMinor | money }}</strong></dd>}
           @if (p().estimateRate !== null) {<dt>Taux de change estimatif</dt><dd>1 {{ p().purchaseCurrency }} = {{ num(p().estimateRate) }} {{ ref.symbol() }}</dd>
-            <dt>Contre-valeur estimée</dt><dd><strong>{{ p().estimatedPurchaseMinor | money }}</strong></dd>}
+            <dt>Coût d’achat HT en {{ ref.symbol() }}</dt><dd><strong>{{ p().estimatedPurchaseMinor | money }}</strong></dd>}
           @if (p().purchaseRate !== null) {<dt>Contre-valeur au taux réel enregistré</dt><dd>{{ p().purchasePriceMinor | money }} <span class="muted">(1 {{ p().purchaseCurrency }} = {{ num(p().purchaseRate) }} au {{ p().purchaseRateDate | date: 'dd/MM/yyyy' : 'UTC' }})</span></dd>}
           <dt>Fournisseur habituel</dt><dd>@if (p().mainSupplierName) {{{ p().mainSupplierName }}@if (p().mainSupplierCode) { <span class="muted">{{ p().mainSupplierCode }}</span>}@if (p().mainSupplierArchived) { <span class="chip off">Archivé</span>}} @else {—}</dd>
-          <dt>Coût de revient estimé</dt><dd><strong>{{ p().estimatedCostValueMinor === null ? '—' : (p().estimatedCostValueMinor | money) }}</strong> <span class="muted">{{ p().estimatedCostMinor !== null ? '(saisi)' : p().estimateRate !== null ? '(contre-valeur estimée)' : '' }}</span></dd>
+          <dt>Coût de revient estimé</dt><dd><strong>{{ p().estimatedCostValueMinor === null ? '—' : (p().estimatedCostValueMinor | money) }}</strong> <span class="muted">{{ p().estimatedCostMinor !== null ? '(saisi)' : p().estimateRate !== null ? '(coût d’achat HT converti)' : '' }}</span></dd>
           @if (p().access.cost) {<dt>Coût de revient réel actuel</dt><dd class="real">{{ p().costPriceMinor === null ? 'Pas encore calculé' : (p().costPriceMinor | money) }}</dd>}</dl>
           @if (p().estimateRate !== null) {<p class="note"><app-icon name="info" />Taux interne utilisé uniquement pour l’estimation du coût de revient.</p>}</section>}
         <section class="card"><h3><app-icon name="payments" />Vente</h3><dl>
@@ -44,8 +44,8 @@ import { TabEditBase } from './tab-edit-base';
       </div>
       @if (p().access.cost) {
         <div class="margins"><div class="kpi"><span class="muted">Marge HT</span><strong [class.neg]="(p().marginMinor ?? 0) < 0">{{ p().marginMinor | money }}</strong></div>
-          <div class="kpi"><span class="muted">Taux de marge (sur coût)</span><strong>{{ p().marginRatePct === null ? '—' : p().marginRatePct + ' %' }}</strong></div>
-          <div class="kpi"><span class="muted">Taux de marque (sur prix de vente)</span><strong>{{ p().markPct === null ? '—' : p().markPct + ' %' }}</strong></div>
+          <div class="kpi"><span class="muted" title="(Prix de vente HT − coût de revient HT) ÷ coût de revient HT × 100">Taux de marge (sur coût)</span><strong>{{ p().marginRatePct === null ? '—' : p().marginRatePct + ' %' }}</strong></div>
+          <div class="kpi"><span class="muted" title="(Prix de vente HT − coût de revient HT) ÷ prix de vente HT × 100">Taux de marge (sur prix de vente)</span><strong>{{ p().markPct === null ? '—' : p().markPct + ' %' }}</strong></div>
           <div class="kpi"><span class="muted">Marge TTC (indicative)</span><strong>{{ p().marginTtcMinor === null ? '—' : (p().marginTtcMinor | money) }}</strong><span class="muted small">{{ p().marginTtcRatePct === null ? '' : p().marginTtcRatePct + ' %' }}</span></div></div>
         <p class="muted small">Marge HT = prix de vente HT − coût de revient (réel, sinon estimé). Marge TTC indicative = prix TTC − (coût + TVA sur coût) : la TVA n’est pas un bénéfice. Formule à valider avec le comptable.</p>
       } @else {<p class="muted small"><app-icon name="lock" /> Les prix d’achat, coûts et marges nécessitent des permissions supplémentaires.</p>}

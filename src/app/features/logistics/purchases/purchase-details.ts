@@ -15,6 +15,7 @@ import { prompt } from '../../../shared/components/prompt-dialog';
 import { Skeleton } from '../../../shared/components/skeleton';
 import { PaySupplierDialog } from '../../finance/finance-dialogs';
 import { MoneyPipe } from '../../../shared/pipes/money.pipe';
+import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
 
 const LABELS: Record<string, string> = { draft: 'Brouillon', confirmed: 'Confirmée', partially_received: 'Partiellement reçue', received: 'Reçue', cancelled: 'Annulée', validated: 'Validée' };
 const good = (s: string) => ['confirmed', 'received', 'validated'].includes(s); const bad = (s: string) => s === 'cancelled';
@@ -24,7 +25,7 @@ const common = `.addresses{display:grid;grid-template-columns:repeat(auto-fit,mi
 /** Fiche de commande d'achat : statut, lignes (reçu / facturé), actions, rapprochement commande / réception / facture. */
 @Component({
   selector: 'app-order-detail',
-  imports: [AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [QtyPipe, AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
       <app-page-header [title]="'Commande d’achat ' + d().number" [subtitle]="d().supplier?.name">
@@ -43,7 +44,7 @@ const common = `.addresses{display:grid;grid-template-columns:repeat(auto-fit,mi
         <div class="card"><h3>Adresse de réception (notre entreprise)</h3>@if (d().receivingAddress; as r) {<strong>{{ r.name }}</strong><p class="muted">{{ r.address || 'Adresse non renseignée' }}</p>} @else {<p class="muted">Non précisée</p>}</div>
       </div>}
       <div class="card"><div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th class="r">Commandé</th><th class="r">Reçu</th><th class="r">Facturé</th><th class="r">P.U. HT</th><th>TVA</th><th class="r">Total HT</th></tr></thead>
-        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}@if (l.reference) {<br><small class="muted">{{ l.reference }}</small>}</td><td class="r">{{ l.quantity }}</td><td class="r">{{ l.receivedQty }}</td><td class="r">{{ l.invoicedQty }}</td><td class="r">{{ l.unitPriceMinor | money }}</td><td>{{ l.vat?.code }}</td><td class="r">{{ l.netHtMinor | money }}</td></tr>}</tbody></table></div></div>
+        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}@if (l.reference) {<br><small class="muted">{{ l.reference }}</small>}</td><td class="r">{{ l.quantity | qty }}</td><td class="r">{{ l.receivedQty | qty }}</td><td class="r">{{ l.invoicedQty | qty }}</td><td class="r">{{ l.unitPriceMinor | money }}</td><td>{{ l.vat?.code }}</td><td class="r">{{ l.netHtMinor | money }}</td></tr>}</tbody></table></div></div>
       <div class="bottom"><div class="card" style="flex:1;min-width:280px"><h3>Notes</h3><p>{{ d().notes || '—' }}</p></div>
         <div class="card totals" style="width:360px;max-width:100%"><h3>Totaux</h3><div><span>Total HT</span><span>{{ d().totals.totalHtMinor | money }}</span></div><div><span>TVA</span><span>{{ d().totals.totalVatMinor | money }}</span></div><div class="b"><span>Total TTC</span><span>{{ d().totals.totalTtcMinor | money }}</span></div></div></div>
       @if (rec()) {<div class="card" style="margin-top:16px"><h3>Rapprochement commande / réception / facture</h3><div class="table-wrap"><table class="lines"><thead><tr><th>Ligne</th><th class="r">Commandé</th><th class="r">Reçu</th><th class="r">Facturé</th><th class="r">Écart de prix</th><th>Alertes</th></tr></thead>
@@ -65,7 +66,7 @@ export class OrderDetail {
 
 @Component({
   selector: 'app-receipt-detail',
-  imports: [AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [QtyPipe, AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
       <app-page-header [title]="'Réception ' + d().number" [subtitle]="d().supplier?.name">
@@ -81,7 +82,7 @@ export class OrderDetail {
         <div class="card"><h3>Adresse de réception (notre entreprise)</h3>@if (d().receivingAddress; as r) {<strong>{{ r.name }}</strong><p class="muted">{{ r.address || 'Adresse non renseignée' }}</p>} @else {<p class="muted">Non précisée</p>}</div>
       </div>}
       <div class="card"><div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th class="r">Quantité</th><th class="r">Coût unitaire</th><th class="r">Frais annexes / unité</th><th class="r">Valeur</th><th>Séries</th></tr></thead>
-        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}</td><td class="r">{{ l.quantity }}</td><td class="r">{{ l.unitCostMinor | money }}</td><td class="r">{{ l.extraUnitCostMinor | money }}</td><td class="r">{{ l.valueMinor | money }}</td><td>{{ l.serials.join(', ') }}</td></tr>}</tbody></table></div></div>
+        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}</td><td class="r">{{ l.quantity | qty }}</td><td class="r">{{ l.unitCostMinor | money }}</td><td class="r">{{ l.extraUnitCostMinor | money }}</td><td class="r">{{ l.valueMinor | money }}</td><td>{{ l.serials.join(', ') }}</td></tr>}</tbody></table></div></div>
     }</div>`,
   styles: common,
 })
@@ -97,7 +98,7 @@ export class ReceiptDetail {
 
 @Component({
   selector: 'app-purchase-invoice-detail',
-  imports: [DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [QtyPipe, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">@if (!d()) {<div class="card"><app-skeleton /></div>} @else {
       <app-page-header [title]="'Facture d’achat ' + (d().number ?? '(brouillon)')" [subtitle]="d().supplier?.name + ' — facture fournisseur n° ' + d().supplierInvoiceNumber">
@@ -109,7 +110,7 @@ export class ReceiptDetail {
       <div class="status-row"><span class="chip" [class.ok]="d().status === 'validated'">{{ label(d().status) }}</span>@if (d().status === 'validated') {<span class="chip" [class.ok]="d().paymentStatus === 'paid'">{{ d().paymentStatus === 'paid' ? 'Réglée' : d().paymentStatus === 'partial' ? 'Partiellement réglée' : 'Non réglée' }}</span><span class="muted">Payé {{ d().paidMinor | money }} — reste dû {{ d().balanceDueMinor | money }}</span>}<span class="muted">{{ d().invoiceDate | date: 'dd/MM/yyyy' : 'UTC' }}</span>@if (d().purchaseOrderId) {<a [routerLink]="['/purchase-orders', d().purchaseOrderId]">Commande source</a>}</div>
       @if (d().variances.length) {<div class="card warn"><strong>Écarts constatés à la validation</strong>@for (v of d().variances; track $index) {<div>{{ v.message }} : commandé {{ v.orderPriceMinor | money }} / facturé {{ v.invoicePriceMinor | money }}</div>}</div>}
       <div class="card"><div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r">P.U. HT</th><th class="r">Rem. %</th><th>TVA</th><th class="r">Total HT</th></tr></thead>
-        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}</td><td class="r">{{ l.quantity }}</td><td class="r">{{ l.unitPriceMinor | money }}</td><td class="r">{{ l.discountPct || '' }}</td><td>{{ l.vat?.code }}</td><td class="r">{{ l.netHtMinor | money }}</td></tr>}</tbody></table></div></div>
+        <tbody>@for (l of d().lines; track l.id) {<tr><td>{{ l.designation }}</td><td class="r">{{ l.quantity | qty }}</td><td class="r">{{ l.unitPriceMinor | money }}</td><td class="r">{{ l.discountPct ? (l.discountPct | qty) : '' }}</td><td>{{ l.vat?.code }}</td><td class="r">{{ l.netHtMinor | money }}</td></tr>}</tbody></table></div></div>
       <div class="bottom"><div class="card" style="flex:1;min-width:280px"><h3>Notes</h3><p>{{ d().notes || '—' }}</p></div>
         <div class="card totals" style="width:360px;max-width:100%"><h3>Totaux</h3><div><span>Total HT</span><span>{{ d().totals.totalHtMinor | money }}</span></div><div><span>TVA déductible</span><span>{{ d().totals.totalVatMinor | money }}</span></div><div class="b"><span>Total TTC</span><span>{{ d().totals.totalTtcMinor | money }}</span></div></div></div>
     }</div>`,

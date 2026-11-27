@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import {
-  Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, ArrowUpDown, Ban, Banknote, BadgeCheck, Bell, BookOpen, Boxes, Building2, Calculator, CalendarDays,
+  Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowLeftRight, Layers, ArrowRight, ArrowUp, ArrowUpDown, Ban, Banknote, BadgeCheck, Bell, BookOpen, Boxes, Building2, Calculator, CalendarDays,
   Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleAlert, CircleCheck, CircleX, ClipboardCheck, Clock, Coins, Copy, Download, EllipsisVertical, Eye, FilePlus, FileText, FileUp,
   Filter, Info, KeyRound, Landmark, LayoutDashboard, List, ListChecks, ListPlus, Lock, LogOut, Mail, Menu, Package, PackageOpen, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, PlaneLanding,
   Plus, Printer, Receipt, ReceiptText, RefreshCw, Save, Search, Send, Settings, Shapes, Shield, ShieldCheck, ShoppingCart, Table, ThumbsDown, Trash2, TriangleAlert, TrendingUp, Truck, Undo2, Upload,
@@ -11,7 +11,7 @@ import {
 /** Correspondance noms historiques (Material) → icônes Lucide : les configurations existantes (menus, listes, actions) restent inchangées. */
 const ICONS: Record<string, IconNode> = {
   delete: Trash2, edit: Pencil, add: Plus, arrow_back: ArrowLeft, arrow_forward: ArrowRight, search: Search, warning: TriangleAlert, lock: Lock, verified: BadgeCheck, fact_check: ClipboardCheck,
-  sync_alt: ArrowLeftRight, download: Download, upload: Upload, publish: Upload, undo: Undo2, unarchive: ArchiveRestore, archive: Archive, swap_vert: ArrowUpDown, rule: ListChecks, print: Printer,
+  restore: ArchiveRestore, layers: Layers, sync_alt: ArrowLeftRight, download: Download, upload: Upload, publish: Upload, undo: Undo2, unarchive: ArchiveRestore, archive: Archive, swap_vert: ArrowUpDown, rule: ListChecks, print: Printer,
   picture_as_pdf: FileText, description: FileText, request_quote: FileText, payments: Banknote, more_vert: EllipsisVertical, inventory: Boxes, inventory_2: Package, info: Info, history: Clock,
   content_copy: Copy, cancel: CircleX, block: Ban, attach_file: Paperclip, warehouse: Warehouse, visibility: Eye, verified_user: ShieldCheck, shield: Shield, upload_file: FileUp, thumb_down: ThumbsDown,
   table_view: Table, send: Send, save: Save, refresh: RefreshCw, receipt: Receipt, receipt_long: ReceiptText, playlist_add: ListPlus, person_add: UserPlus, note_add: FilePlus, move_to_inbox: PackageOpen,

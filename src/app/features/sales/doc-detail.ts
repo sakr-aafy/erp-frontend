@@ -19,10 +19,11 @@ import { PaymentDialog } from './payment-dialog';
 import { BlValidateDialog } from './bl-validate-dialog';
 import { DOC_CONFIG, DocConfig, DocKind, PAYMENT_METHOD_LABELS, PaymentDto, SalesDoc, STATUS_LABELS } from './sales.models';
 import { SalesService } from './sales.service';
+import { QtyPipe } from '../../shared/pipes/quantity.pipe';
 
 @Component({
   selector: 'app-doc-detail',
-  imports: [AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
+  imports: [QtyPipe, AddressBody, DatePipe, RouterLink, MatButtonModule, Icon, PageHeader, Skeleton, MoneyPipe],
   template: `
     <div class="page">
       @if (!d()) {<div class="card"><app-skeleton /></div>} @else {
@@ -43,17 +44,19 @@ import { SalesService } from './sales.service';
       @if (d()!.creditedInvoiceId) {<div class="card info"><app-icon name="undo" /> Avoir sur la facture <a [routerLink]="['/invoices', d()!.creditedInvoiceId]">voir</a> — motif : {{ d()!.creditReason }}</div>}
       @if (d()!.status === 'cancelled' && d()!.cancelReason) {<div class="card info">Annulé : {{ d()!.cancelReason }}</div>}
       <div class="links">
-        @if (d()!.quotationId) {<a [routerLink]="['/quotations', d()!.quotationId]">Devis source</a>} @if (d()!.proformaId) {<a [routerLink]="['/proformas', d()!.proformaId]">Proforma</a>}
+        @if (d()!.quotationId) {<a [routerLink]="['/quotations', d()!.quotationId]">Devis source{{ d()!.quotationVersion ? ' (version ' + d()!.quotationVersion + ' acceptée)' : '' }}</a>} @if (d()!.proformaId) {<a [routerLink]="['/proformas', d()!.proformaId]">Proforma</a>}
         @if (d()!.invoiceId) {<a [routerLink]="['/invoices', d()!.invoiceId]">Facture liée</a>}
         @if (d()!.source) {<a [routerLink]="[sourceRoute(), d()!.source!.id]">Source : {{ d()!.source!.number }}</a>}
         @for (b of d()!.deliveryNoteIds ?? []; track b) {<a [routerLink]="['/delivery-notes', b]">Bon de livraison</a>}
       </div>
 
+      @if (d()!.deliveryTime) {<div class="card info ship"><app-icon name="local_shipping" /> Délai de livraison : {{ d()!.deliveryTime }}</div>}
+      @if (d()!.syncDiscountPct) {<p class="muted">Remise globale de {{ d()!.syncDiscountPct | qty }} % appliquée à chaque article.</p>}
       <div class="card" style="margin-top:16px"><div class="table-wrap"><table class="lines">
         <thead><tr><th>Désignation</th><th class="r">Qté</th>@if (kind() !== 'delivery-notes') {<th class="r">P.U. HT</th><th class="r">Rem. %</th><th>TVA</th><th class="r">Total HT</th>}@if (showDelivered()) {<th class="r">Livré</th>}</tr></thead>
-        <tbody>@for (l of d()!.lines; track $index) {<tr><td>{{ l.designation }}@if (l.reference) {<br><small class="muted">{{ l.reference }}</small>}</td><td class="r">{{ l.quantity }} {{ l.unit }}</td>
-          @if (kind() !== 'delivery-notes') {<td class="r">{{ l.unitPriceMinor | money }}</td><td class="r">{{ l.discountPct || '' }}</td><td>{{ vatText(l.vat) }}</td><td class="r">{{ l.netHtMinor | money }}</td>}
-          @if (showDelivered()) {<td class="r">{{ l.kind === 'service' ? '—' : (l.deliveredQty ?? 0) }}</td>}</tr>}</tbody></table></div></div>
+        <tbody>@for (l of d()!.lines; track $index) {<tr><td>{{ l.designation }}@if (l.reference) {<br><small class="muted">{{ l.reference }}</small>}</td><td class="r">{{ l.quantity | qty }} {{ l.unit }}</td>
+          @if (kind() !== 'delivery-notes') {<td class="r">{{ l.unitPriceMinor | money }}</td><td class="r">{{ l.discountPct ? (l.discountPct | qty) : '' }}</td><td>{{ vatText(l.vat) }}</td><td class="r">{{ l.netHtMinor | money }}</td>}
+          @if (showDelivered()) {<td class="r">{{ l.kind === 'service' ? '—' : ((l.deliveredQty ?? 0) | qty) }}</td>}</tr>}</tbody></table></div></div>
 
       @if (needsSchedule()) {<div class="card warn" role="status"><app-icon name="warning" /> Conditions personnalisées sans échéancier : modifiez la facture et saisissez les échéances réelles avant de la valider.</div>}
 
@@ -94,7 +97,7 @@ import { SalesService } from './sales.service';
       }
     </div>`,
   styles: `.status-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.info{background:var(--brand-50);border-color:var(--brand-200);margin-bottom:12px;display:flex;gap:8px;align-items:center}
-    .links{display:flex;gap:16px;flex-wrap:wrap}.links a{color:var(--brand)}.delivery strong{display:block;margin-bottom:4px}.pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.small{font-size:12px;margin:8px 0 0}.warn{margin-top:12px;display:flex;gap:8px;align-items:center;background:var(--accent-50);border-color:var(--accent-300);color:var(--accent-ink)}h3{margin:0 0 12px;font-size:16px}.bottom{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:flex-start}
+    .links{display:flex;gap:16px;flex-wrap:wrap}.ship{margin-top:12px;overflow-wrap:anywhere}.links a{color:var(--brand)}.delivery strong{display:block;margin-bottom:4px}.pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.small{font-size:12px;margin:8px 0 0}.warn{margin-top:12px;display:flex;gap:8px;align-items:center;background:var(--accent-50);border-color:var(--accent-300);color:var(--accent-ink)}h3{margin:0 0 12px;font-size:16px}.bottom{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:flex-start}
     .lines{width:100%;border-collapse:collapse;min-width:640px}.lines th,.lines td{padding:8px;border-bottom:1px solid var(--erp-border);text-align:left}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
     .totals div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.totals .b{font-weight:600;border-top:1px solid var(--erp-border);margin-top:4px;padding-top:6px}.totals .s{font-size:13px;color:var(--muted)}
     .inst{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--erp-border);align-items:center}.cancelled{text-decoration:line-through;opacity:.6}`,

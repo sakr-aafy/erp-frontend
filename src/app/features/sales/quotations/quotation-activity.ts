@@ -17,6 +17,7 @@ const ICON: Record<string, string> = {
   created: 'note_add', line_added: 'playlist_add', line_removed: 'delete', price_changed: 'payments', discount_changed: 'percent', quantity_changed: 'calculate', designation_changed: 'edit', vat_changed: 'account_balance', lines_reordered: 'swap_vert',
   customer_changed: 'person', payment_terms_changed: 'credit_card', validity_changed: 'calendar', date_changed: 'calendar', delivery_address_changed: 'place', global_discount_changed: 'percent', notes_changed: 'description',
   marked_sent: 'send', email_sent: 'mail', accepted: 'check_circle', refused: 'cancel', expired: 'event_busy', duplicated: 'content_copy', converted_proforma: 'description', converted_invoice: 'receipt', invoice_unlinked: 'undo',
+  delivery_time_changed: 'local_shipping', version_created: 'layers', version_abandoned: 'undo', cancelled: 'block', document_added: 'attach_file', document_updated: 'edit', document_removed: 'delete', comment_added: 'chat', comment_edited: 'chat', comment_archived: 'archive', migrated: 'info',
 };
 const ROUTE: Record<string, string> = { quotation: '/quotations', proforma: '/proformas', invoice: '/invoices' };
 
@@ -66,7 +67,7 @@ export class QuotationActivityTab {
     });
   }
   more() { this.page++; this.load(false); }
-  highlight = (k: string) => ['accepted', 'refused', 'expired', 'email_sent', 'marked_sent', 'converted_invoice', 'converted_proforma'].includes(k);
+  highlight = (k: string) => ['version_created', 'cancelled', 'accepted', 'refused', 'expired', 'email_sent', 'marked_sent', 'converted_invoice', 'converted_proforma'].includes(k);
   route = (t: string) => ROUTE[t] ?? null;
   format(a: QuotationActivity, v: unknown): string {
     if (v === null || v === undefined || v === '') return '—';

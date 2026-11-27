@@ -1,4 +1,4 @@
-import { Component, inject, input } from '@angular/core';
+import { Component, DestroyRef, inject, input } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -7,8 +7,14 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 import { Icon } from '../../shared/components/icon';
-import { applyPreset, CustomerForm } from './customer-form.model';
-import { PAYMENT_METHODS, TERMS, TERMS_EXAMPLES } from './customer.labels';
+import { applyPreset, CustomerForm, daysLabel, TERM_PREFIX, termValue } from './customer-form.model';
+import { PaymentTermService } from '../payment-terms/payment-term.service';
+import { openPaymentTerms } from '../payment-terms/payment-terms-dialog';
+import { AuthService } from '../../core/authentication/auth.service';
+import { MatDialog } from '@angular/material/dialog';
+import { MatButtonModule } from '@angular/material/button';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { PAYMENT_METHODS, TERMS_EXAMPLES } from './customer.labels';
 
 /**
  * Sections du formulaire client (identification, coordonnées, réseaux et localisation, conditions commerciales, fiscalité).
@@ -16,7 +22,7 @@ import { PAYMENT_METHODS, TERMS, TERMS_EXAMPLES } from './customer.labels';
  */
 @Component({
   selector: 'app-customer-fields',
-  imports: [ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatSlideToggleModule, MatButtonToggleModule, Icon],
+  imports: [MatButtonModule, ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatSlideToggleModule, MatButtonToggleModule, Icon],
   template: `
     <form [formGroup]="form()" class="sections" (submit)="$event.preventDefault()">
       <section class="card">
@@ -51,11 +57,11 @@ import { PAYMENT_METHODS, TERMS, TERMS_EXAMPLES } from './customer.labels';
         <header><app-icon name="phone" /><h3>Contact</h3></header>
         <div class="form-grid">
           <mat-form-field appearance="outline"><mat-label>Téléphone principal</mat-label><input matInput type="tel" formControlName="phone" placeholder="+216 71 000 000" />
-            <mat-hint>Format international ajouté selon le pays</mat-hint>@if (c.phone.invalid) {<mat-error>Numéro invalide</mat-error>}</mat-form-field>
+            <mat-hint>Format international ajouté selon le pays</mat-hint>@if (c.phone.invalid) {<mat-error>{{ c.phone.errors?.['duplicate'] ?? 'Numéro invalide' }}</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Téléphone secondaire</mat-label><input matInput type="tel" formControlName="secondaryPhone" />
-            @if (c.secondaryPhone.invalid) {<mat-error>Numéro invalide</mat-error>}</mat-form-field>
+            @if (c.secondaryPhone.invalid) {<mat-error>{{ c.secondaryPhone.errors?.['duplicate'] ?? 'Numéro invalide' }}</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>E-mail</mat-label><input matInput type="email" formControlName="email" placeholder="contact@exemple.tn" />
-            @if (c.email.invalid) {<mat-error>E-mail invalide</mat-error>}</mat-form-field>
+            @if (c.email.invalid) {<mat-error>{{ c.email.errors?.['duplicate'] ?? 'E-mail invalide' }}</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Site Internet</mat-label><input matInput formControlName="website" placeholder="https://" />
             @if (c.website.invalid) {<mat-error>URL invalide (http:// ou https://)</mat-error>}</mat-form-field>
         </div>
@@ -76,7 +82,8 @@ import { PAYMENT_METHODS, TERMS, TERMS_EXAMPLES } from './customer.labels';
           <mat-form-field appearance="outline"><mat-label>Plafond de crédit ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="creditLimit" />
             <mat-hint>Vide = illimité</mat-hint>@if (c.creditLimit.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Conditions de paiement</mat-label>
-            <mat-select formControlName="paymentPreset" (selectionChange)="preset()">@for (t of terms; track t.days) {<mat-option [value]="'' + t.days">{{ t.label }}</mat-option>}<mat-option value="custom">Autre délai (en jours)</mat-option><mat-option value="free">Conditions personnalisées</mat-option></mat-select></mat-form-field>
+            <mat-select formControlName="paymentPreset" (selectionChange)="preset()">@for (o of options(); track o.value) {<mat-option [value]="o.value">{{ o.label }}</mat-option>}<mat-option value="custom">Autre délai (en jours)</mat-option><mat-option value="free">Texte libre personnalisé</mat-option></mat-select>
+            @if (canManage()) {<button matSuffix mat-icon-button type="button" aria-label="Gérer les conditions de paiement" title="Gérer les conditions de paiement" (click)="manage($event)"><app-icon name="settings" /></button>}</mat-form-field>
           @if (c.paymentPreset.value === 'custom') {
             <mat-form-field appearance="outline"><mat-label>Délai de paiement (jours)</mat-label><input matInput type="number" min="0" max="365" formControlName="paymentDelayDays" />
               @if (c.paymentDelayDays.invalid) {<mat-error>Entier entre 0 et 365</mat-error>}</mat-form-field>
@@ -92,8 +99,8 @@ import { PAYMENT_METHODS, TERMS, TERMS_EXAMPLES } from './customer.labels';
                 @for (e of examples; track e) {<button type="button" class="ex" (click)="useExample(e)">{{ e }}</button>}</div>
             </div>
           }
-          <mat-form-field appearance="outline"><mat-label>Remise habituelle (%)</mat-label><input matInput type="number" min="0" max="100" step="0.01" formControlName="discountPct" />
-            @if (c.discountPct.invalid) {<mat-error>Entre 0 et 100 %</mat-error>}</mat-form-field>
+          <mat-form-field appearance="outline"><mat-label>Remise habituelle (%)</mat-label><input matInput type="number" min="0" max="100" step="0.1" formControlName="discountPct" />
+            @if (c.discountPct.invalid) {<mat-error>Entre 0 et 100 %, un chiffre après la virgule</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Mode de paiement habituel</mat-label>
             <mat-select formControlName="paymentMethod"><mat-option value="">Non précisé</mat-option>@for (m of methods; track m.value) {<mat-option [value]="m.value">{{ m.label }}</mat-option>}</mat-select></mat-form-field>
         </div>
@@ -114,12 +121,34 @@ import { PAYMENT_METHODS, TERMS, TERMS_EXAMPLES } from './customer.labels';
 export class CustomerFields {
   form = input.required<CustomerForm>();
   code = input<string | null>(null);
+  /** Nouveau client : seul cas où la condition par défaut de la société est préselectionnée. */
+  creating = input(false);
   ref = inject(ReferenceDataService);
-  terms = TERMS; methods = PAYMENT_METHODS; examples = TERMS_EXAMPLES;
+  methods = PAYMENT_METHODS; examples = TERMS_EXAMPLES;
+  private terms = inject(PaymentTermService); private auth = inject(AuthService); private dialog = inject(MatDialog); private destroy = inject(DestroyRef);
+  /** Conditions actives, plus la valeur déjà portée par la fiche si elle n'est plus proposée. */
+  options() {
+    const out = this.terms.terms().filter((t) => t.isActive).map((t) => ({ value: termValue(t), label: t.label }));
+    const cur = this.c.paymentPreset.value;
+    if (cur && cur !== 'custom' && cur !== 'free' && !out.some((o) => o.value === cur)) out.push({ value: cur, label: cur.startsWith(TERM_PREFIX) ? cur.slice(TERM_PREFIX.length) : daysLabel(Number(cur)) });
+    return out.length ? out : [0, 30, 60].map((d) => ({ value: String(d), label: daysLabel(d) }));
+  }
+  canManage = () => this.auth.has('customers:create') || this.auth.has('customers:update');
+  manage(e: Event) { e.stopPropagation(); openPaymentTerms(this.dialog).pipe(takeUntilDestroyed(this.destroy)).subscribe(); }
+  private chosen() { const v = this.c.paymentPreset.value; return this.terms.terms().find((t) => termValue(t) === v); }
+  ngOnInit() {
+    this.terms.refresh().pipe(takeUntilDestroyed(this.destroy)).subscribe({ next: () => this.defaultTerm(), error: () => undefined });
+  }
+  /** Nouveau client : la condition par défaut de la société est préselectionnée tant que rien n'a été choisi. */
+  private defaultTerm() {
+    const preset = this.terms.terms().find((t) => t.isDefault && t.isActive);
+    if (!this.creating() || !preset || this.c.paymentPreset.dirty || this.c.paymentTermsText.value) return;
+    this.c.paymentPreset.setValue(termValue(preset)); this.preset();
+  }
   get c() { return this.form().controls; }
   isCompany = () => this.form().controls.type.value === 'company';
   step = () => 1 / 10 ** this.ref.decimals();
   setType(t: 'company' | 'walk_in') { this.form().controls.type.setValue(t); }
-  preset() { applyPreset(this.form()); }
+  preset() { applyPreset(this.form(), this.chosen()); }
   useExample(text: string) { this.c.paymentTermsText.setValue(text); this.c.paymentTermsText.markAsDirty(); }
 }

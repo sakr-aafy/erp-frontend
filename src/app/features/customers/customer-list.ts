@@ -1,16 +1,12 @@
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
-import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { AuthService } from '../../core/authentication/auth.service';
 import { errorMessage } from '../../core/services/api';
 import { ToastService } from '../../core/services/toast.service';
@@ -27,21 +23,24 @@ import { MoneyPipe } from '../../shared/pipes/money.pipe';
 import { CustomerActions } from './customer-actions.service';
 import { STATUS_CHIP, STATUS_LABEL, TYPE_ICON, TYPE_LABEL } from './customer.labels';
 import { CustomerService } from './customer.service';
+import { MatDialog } from '@angular/material/dialog';
+import { CustomerSearch, CustomerSearchValue } from './customer-search';
+import { DuplicateGroup, DuplicatesDialog } from './duplicates-dialog';
 
 @Component({
   selector: 'app-customer-list',
-  imports: [ReactiveFormsModule, RouterLink, MatTableModule, MatPaginatorModule, MatSortModule, MatButtonModule, Icon, MatFormFieldModule, MatInputModule,
+  imports: [CustomerSearch, RouterLink, MatTableModule, MatPaginatorModule, MatSortModule, MatButtonModule, Icon, MatFormFieldModule,
     MatSelectModule, MatSlideToggleModule, PageHeader, EmptyState, Skeleton, ExportMenu, HasPermissionDirective, MoneyPipe, RowActions, PhoneLink],
   template: `
     <div class="page">
       <app-page-header title="Clients" subtitle="Fiches clients, conditions commerciales, plafonds de crédit et soldes">
+        @if (duplicates()) {<button mat-stroked-button type="button" (click)="showDuplicates()"><app-icon name="warning" />{{ duplicates() }} doublon(s)</button>}
         <app-export-menu *appHasPermission="'customers:view'" path="/customers/export" [params]="exportParams()" />
         <a mat-flat-button color="primary" routerLink="new" *appHasPermission="'customers:create'"><app-icon name="add" />Nouveau client</a>
       </app-page-header>
       <div class="card">
         <div class="toolbar-row">
-          <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Rechercher</mat-label><app-icon matPrefix name="search" />
-            <input matInput [formControl]="search" placeholder="Code, nom, matricule, téléphone, e-mail…" /></mat-form-field>
+          <app-customer-search class="find" label="Rechercher un client" [filters]="lookupFilters()" (changed)="onSearch($event)" />
           <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Type</mat-label>
             <mat-select [value]="type()" (selectionChange)="type.set($event.value); reload()"><mat-option value="">Tous les types</mat-option><mat-option value="company">Société</mat-option><mat-option value="walk_in">Passager</mat-option></mat-select></mat-form-field>
           <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Statut</mat-label>
@@ -81,27 +80,35 @@ import { CustomerService } from './customer.service';
     </div>`,
   styles: `table.compact th,table.compact td{padding:0 8px!important}table.compact th.mat-mdc-header-cell{font-size:11px}.nw{white-space:nowrap}td.r strong{white-space:nowrap}
     @media (min-width:901px){td[data-label=Client]{min-width:190px;max-width:260px}td[data-label=Contact]{max-width:200px;overflow:hidden;text-overflow:ellipsis}}.lnk{color:inherit;text-decoration:none}.row{cursor:pointer}.code{font-weight:600;color:var(--brand);white-space:nowrap}.kind{display:inline-flex;align-items:center;gap:6px;color:var(--text-2);white-space:nowrap}
-    .warn-ico{font-size:16px;vertical-align:middle;margin-left:4px}.act{width:56px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}`,
+    app-customer-search.find{flex:1 1 280px;max-width:420px}.warn-ico{font-size:16px;vertical-align:middle;margin-left:4px}.act{width:56px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}`,
 })
 export class CustomerList {
-  private svc = inject(CustomerService); private toast = inject(ToastService); private router = inject(Router); private destroy = inject(DestroyRef);
-  private actions = inject(CustomerActions); private auth = inject(AuthService);
+  private svc = inject(CustomerService); private toast = inject(ToastService); private router = inject(Router);
+  private actions = inject(CustomerActions); private auth = inject(AuthService); private dialog = inject(MatDialog);
   cols = ['code', 'name', 'type', 'taxId', 'contact', 'city', 'limit', 'balance', 'status', 'actions'];
   typeIcon = TYPE_ICON; typeLabel = TYPE_LABEL; statusLabel = STATUS_LABEL; chip = STATUS_CHIP;
   items = signal<Customer2[]>([]); total = signal(0); loading = signal(true); summary = signal<number | null>(null); cities = signal<string[]>([]);
   page = signal(0); pageSize = signal(20); status = signal('open'); type = signal(''); city = signal(''); debtors = signal(false); sort = signal<string | undefined>(undefined);
-  search = new FormControl('', { nonNullable: true });
-  exportParams = computed(() => ({ q: this.search.value, status: this.status(), type: this.type() || undefined, city: this.city() || undefined, debtors: this.debtors() || undefined, sort: this.sort() }));
+  /** Recherche libre, ou client choisi dans les suggestions (la liste est alors limitée à sa fiche). */
+  query = signal(''); picked = signal(''); duplicates = signal(0); private groups: DuplicateGroup[] = [];
+  lookupFilters = computed(() => ({ status: this.status(), ...(this.type() && { type: this.type() }), ...(this.city() && { city: this.city() }) }));
+  exportParams = computed(() => ({ q: this.query() || undefined, customerId: this.picked() || undefined, status: this.status(), type: this.type() || undefined, city: this.city() || undefined, debtors: this.debtors() || undefined, sort: this.sort() }));
 
   constructor() {
-    this.search.valueChanges.pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed(this.destroy)).subscribe(() => this.reload());
+    if (this.auth.has('customers:view') && this.auth.has('customers:update')) this.svc.duplicates().subscribe({ next: (r) => { this.groups = r.items; this.duplicates.set(r.items.length); }, error: () => undefined });
     this.svc.cities().subscribe({ next: (c) => this.cities.set(c), error: () => undefined });
     this.load();
   }
   reload() { this.page.set(0); this.load(); }
+  onSearch(v: CustomerSearchValue) {
+    const q = v.customer ? '' : v.q; const id = v.customer?.id ?? '';
+    if (q === this.query() && id === this.picked()) return;
+    this.query.set(q); this.picked.set(id); this.reload();
+  }
+  showDuplicates() { this.dialog.open(DuplicatesDialog, { data: this.groups, width: '720px', maxWidth: '95vw' }); }
   load() {
     this.loading.set(true);
-    this.svc.list({ page: this.page() + 1, limit: this.pageSize(), q: this.search.value, status: this.status(), type: this.type(), city: this.city(), debtors: this.debtors(), sort: this.sort() }).subscribe({
+    this.svc.list({ page: this.page() + 1, limit: this.pageSize(), q: this.query(), customerId: this.picked() || undefined, status: this.status(), type: this.type(), city: this.city(), debtors: this.debtors(), sort: this.sort() }).subscribe({
       next: (r) => { this.items.set(r.items); this.total.set(r.total); this.summary.set(r.summary?.totalBalanceMinor ?? null); this.loading.set(false); },
       error: (e) => { this.toast.error(errorMessage(e)); this.loading.set(false); },
     });

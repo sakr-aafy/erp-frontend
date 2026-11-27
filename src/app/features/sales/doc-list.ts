@@ -80,7 +80,7 @@ export class DocList {
   label = (s: string) => STATUS_LABELS[s] ?? s;
   good = (d: SalesDoc) => ['accepted', 'validated', 'converted', 'paid'].includes(d.status);
   bad = (d: SalesDoc) => ['refused', 'expired', 'cancelled'].includes(d.status);
-  subtitle = () => ({ quotations: 'Création, suivi des statuts et conversion en proforma ou facture', proformas: 'Engagement précontractuel — conversion en facture définitive',
+  subtitle = () => ({ quotations: 'Création, suivi des statuts et conversion en facture proforma', proformas: 'Engagement précontractuel — conversion en facture définitive',
     invoices: 'Factures et avoirs numérotés légalement ; une facture validée n’est jamais modifiée', 'delivery-notes': 'Livraisons totales ou partielles, facturation des BL' })[this.kind()];
 
   private route = inject(ActivatedRoute);

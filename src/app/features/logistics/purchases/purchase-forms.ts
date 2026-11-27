@@ -14,6 +14,10 @@ import { PageHeader } from '../../../shared/components/page-header';
 import { AddressSnapshot, SupplierDto } from '../../../shared/models/api.models';
 import { Skeleton } from '../../../shared/components/skeleton';
 import { LineGroup, LinesEditor, PartyPicker, lineGroup } from '../lines-editor';
+import { DecimalInput } from '../../../shared/directives/decimal-input.directive';
+import { quantityError, quantityValidator } from '../../../shared/utils/quantity';
+import { UnitsService } from '../../../core/services/units.service';
+import { QtyPipe } from '../../../shared/pipes/quantity.pipe';
 
 interface Warehouse { id: string; code: string; name: string; address?: string | null; isDefault: boolean; isActive: boolean }
 interface ReceivingAddress { warehouseId: string | null; name: string; address?: string | null }
@@ -125,7 +129,7 @@ export class OrderForm {
 /** Réception de marchandises : depuis une commande (quantités à recevoir, magasin, séries). */
 @Component({
   selector: 'app-receipt-form',
-  imports: [ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, PageHeader, Skeleton, AddressSelect],
+  imports: [QtyPipe, DecimalInput, ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, PageHeader, Skeleton, AddressSelect],
   template: `
     <div class="page"><app-page-header title="Nouvelle réception" [subtitle]="order() ? 'Commande ' + order().number + ' — ' + order().supplier?.name : ''" />
       @if (loading()) {<div class="card"><app-skeleton /></div>} @else {
@@ -143,8 +147,8 @@ export class OrderForm {
             @else {<p class="muted">Choisissez le magasin de réception ci-dessus.</p>}</section>
         </div></div>
         <div class="card sec"><h3>Quantités reçues</h3><div class="table-wrap"><table class="lines"><thead><tr><th>Désignation</th><th class="r">Commandé</th><th class="r">Déjà reçu</th><th class="r">Reste</th><th class="r">Reçu maintenant</th><th>N° de série (un par ligne)</th></tr></thead>
-          <tbody formArrayName="rows">@for (g of rows.controls; track $index; let i = $index) {<tr [formGroupName]="i"><td>{{ info[i]?.designation }}</td><td class="r">{{ info[i]?.quantity }}</td><td class="r">{{ info[i]?.receivedQty }}</td><td class="r">{{ info[i]?.remainingQty }}</td>
-            <td class="r"><input class="q" type="number" min="0" [max]="info[i]?.remainingQty" step="0.001" formControlName="quantity" aria-label="Quantité reçue" /></td><td><textarea rows="1" formControlName="serials" aria-label="Numéros de série"></textarea></td></tr>}</tbody></table></div>
+          <tbody formArrayName="rows">@for (g of rows.controls; track $index; let i = $index) {<tr [formGroupName]="i"><td>{{ info[i]?.designation }}</td><td class="r">{{ info[i]?.quantity | qty }}</td><td class="r">{{ info[i]?.receivedQty | qty }}</td><td class="r">{{ info[i]?.remainingQty | qty }}</td>
+            <td class="r"><input appDecimal class="q" formControlName="quantity" aria-label="Quantité reçue" [class.bad]="g.controls.quantity.invalid" />@if (g.controls.quantity.invalid) {<small class="err" role="alert">{{ qtyError(g.controls.quantity) }}</small>}</td><td><textarea rows="1" formControlName="serials" aria-label="Numéros de série"></textarea></td></tr>}</tbody></table></div>
           <p class="muted">Réception partielle possible : le reste pourra être reçu plus tard. L’entrée en stock a lieu à la validation.</p></div>
         <div class="toolbar-row"><span class="spacer"></span><a mat-button routerLink="/goods-receipts">Annuler</a><button mat-flat-button color="primary" [disabled]="saving()">Enregistrer</button></div>
       </form>}</div>`,
@@ -161,7 +165,12 @@ export class ReceiptForm {
   private initAddress(snapshot: AddressSnapshot | null) { this.currentAddress.set(snapshot); this.addressId.set(snapshot?.addressId ?? ''); this.keptAddress = snapshot?.addressId ?? ''; this.addressReady = true; }  
   form = this.fb.nonNullable.group({ warehouseId: ['', Validators.required], receiptDate: [today()], deliveryNoteRef: [''], rows: this.rows });
   loading = signal(true); saving = signal(false); error = signal('');
-  row(q = 0, serials = '') { return this.fb.nonNullable.group({ quantity: [q, [Validators.min(0)]], serials: [serials] }); }
+  private units = inject(UnitsService); qtyError = quantityError;
+  row(q = 0, serials = '', line?: { unit?: string | null; remainingQty?: number; quantity?: number }) {
+    const g = this.fb.nonNullable.group({ quantity: [q as number | null], serials: [serials] });
+    g.controls.quantity.addValidators(quantityValidator(() => this.units.decimalsOf(line?.unit), { allowZero: true, optional: true, carried: () => (line && (q === line.remainingQty || q === line.quantity) ? q : undefined) }));
+    return g;
+  }
   ngOnInit() {
     this.form.controls.warehouseId.valueChanges.subscribe((v) => this.selectedWarehouse.set(v));
     this.api.get('/warehouses').subscribe((w) => { this.warehouses.set(w.filter((x: { isActive: boolean }) => x.isActive)); const d = w.find((x: { isDefault: boolean }) => x.isDefault); if (d && !this.form.controls.warehouseId.value) this.form.controls.warehouseId.setValue(d.id); });
@@ -170,12 +179,13 @@ export class ReceiptForm {
       this.order.set(o); if (!this.id()) { this.initAddress(o.supplierAddress); if (o.receivingAddress?.warehouseId) this.form.controls.warehouseId.setValue(o.receivingAddress.warehouseId); }
       this.api.get<SupplierDto>(`/suppliers/${o.supplierId}`).subscribe({ next: (s) => this.supplier.set(s), error: () => undefined });
       this.info = o.lines.filter((l: any) => l.productId && (cur?.[l.id] || l.remainingQty > 0)).map((l: any) => ({ ...l, remainingQty: cur?.[l.id] ? l.remainingQty : l.remainingQty }));  
-      this.info.forEach((l) => this.rows.push(this.row(cur?.[l.id]?.quantity ?? l.remainingQty, (cur?.[l.id]?.serials ?? []).join('\n')))); this.loading.set(false); }, error: (e) => { this.toast.error(errorMessage(e)); this.router.navigate(['/goods-receipts']); } });
+      this.info.forEach((l) => this.rows.push(this.row(cur?.[l.id]?.quantity ?? l.remainingQty, (cur?.[l.id]?.serials ?? []).join('\n'), l))); this.units.load(() => this.rows.controls.forEach((g) => g.controls.quantity.updateValueAndValidity())); this.loading.set(false); }, error: (e) => { this.toast.error(errorMessage(e)); this.router.navigate(['/goods-receipts']); } });
     if (id) this.api.get(`/goods-receipts/${id}`).subscribe((r) => { this.initAddress(r.supplierAddress); this.form.patchValue({ warehouseId: r.warehouseId, receiptDate: iso(r.receiptDate), deliveryNoteRef: r.deliveryNoteRef ?? '' }); load(r.purchaseOrderId, Object.fromEntries(r.lines.map((l: any) => [l.orderLineId, { quantity: l.quantity, serials: l.serials }]))); });  
     else if (this.orderId()) load(this.orderId()!); else { this.toast.error('Choisissez une commande depuis sa fiche (bouton « Réceptionner »).'); this.router.navigate(['/purchase-orders']); }
   }
   save() {
     this.error.set(''); if (this.form.controls.warehouseId.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.rows.invalid) { this.error.set('Corrigez les quantités reçues (nombre de décimales de l’unité).'); return; }
     const v = this.form.getRawValue(); const lines = this.info.map((l, i) => ({ orderLineId: l.id, quantity: Number(v.rows[i]!.quantity), serials: v.rows[i]!.serials.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) })).filter((l) => l.quantity > 0).map((l) => ({ ...l, ...(l.serials.length ? {} : { serials: undefined }) }));
     if (!lines.length) { this.error.set('Indiquez au moins une quantité reçue.'); return; }
     this.saving.set(true); const body = { ...(this.addressReady && this.addressId() !== this.keptAddress && { supplierAddressId: this.addressId() || null }), purchaseOrderId: this.order().id, warehouseId: v.warehouseId, receiptDate: v.receiptDate, deliveryNoteRef: v.deliveryNoteRef || undefined, lines }; const id = this.id();

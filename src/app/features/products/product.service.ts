@@ -65,15 +65,5 @@ export class ProductService {
   archiveCategory(id: string) { return this.http.post<CategoryDto>(`${this.api}/product-categories/${id}/archive`, {}); }
   restoreCategory(id: string) { return this.http.post<CategoryDto>(`${this.api}/product-categories/${id}/restore`, {}); }
   units() { return this.http.get<UnitDto[]>(`${this.api}/product-units`); }
-  createUnit(code: string, name: string) { return this.http.post<UnitDto>(`${this.api}/product-units`, { code, name }); }
-  updateUnit(id: string, d: Partial<UnitDto>) { return this.http.put<UnitDto>(`${this.api}/product-units/${id}`, d); }
   deleteUnit(id: string) { return this.http.delete<void>(`${this.api}/product-units/${id}`); }
-}
-
-/** Code technique d'unité (requis et unique côté API), dérivé du nom : sans accents ni espaces, majuscules, suffixe numérique en cas de doublon. */
-export function unitCodeFor(name: string, existing: { code: string }[]): string {
-  const base = (name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '').toUpperCase() || 'U').slice(0, 10);
-  const used = new Set(existing.map((u) => u.code.toUpperCase()));
-  let code = base; for (let i = 2; used.has(code); i++) code = base.slice(0, 12 - String(i).length) + i;
-  return code;
 }

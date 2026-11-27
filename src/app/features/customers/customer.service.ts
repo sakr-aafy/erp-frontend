@@ -2,9 +2,10 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import { Customer2, CustomerStatus, ListResponse } from '../../shared/models/api.models';
+import type { DuplicateGroup } from './duplicates-dialog';
 import { ActivityDto, ContactInput, CustomerSummary, DocKind, DocumentDto, PaymentsView, TxPage } from './customer.types';
 
-export interface CustomerQuery { page: number; limit: number; q?: string; status?: string; type?: string; city?: string; debtors?: boolean; sort?: string }
+export interface CustomerQuery { page: number; limit: number; q?: string; status?: string; type?: string; city?: string; debtors?: boolean; sort?: string; customerId?: string }
 export interface TxQuery { page: number; limit: number; type?: DocKind | ''; status?: string; from?: string; to?: string; q?: string }
 
 @Injectable({ providedIn: 'root' })
@@ -14,6 +15,7 @@ export class CustomerService {
 
   list(q: CustomerQuery) { return this.http.get<ListResponse<Customer2>>(this.url, { params: this.params(q) }); }
   cities() { return this.http.get<string[]>(`${this.url}/cities`); }
+  duplicates() { return this.http.get<{ items: DuplicateGroup[] }>(`${this.url}/duplicates`); }
   get(id: string) { return this.http.get<Customer2>(`${this.url}/${id}`); }
   create(d: object) { return this.http.post<Customer2>(this.url, d); }
   update(id: string, d: object) { return this.http.put<Customer2>(`${this.url}/${id}`, d); }
