@@ -79,8 +79,8 @@ import { PAYMENT_METHODS, TERMS_EXAMPLES } from './customer.labels';
       <section class="card">
         <header><app-icon name="payments" /><h3>Conditions commerciales et financières</h3></header>
         <div class="form-grid">
-          <mat-form-field appearance="outline"><mat-label>Plafond de crédit ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="creditLimit" />
-            <mat-hint>Vide = illimité</mat-hint>@if (c.creditLimit.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
+          <mat-form-field appearance="outline" floatLabel="always" class="credit"><mat-label>Plafond de crédit ({{ ref.symbol() }})</mat-label><input matInput type="number" min="0" [step]="step()" formControlName="creditLimit" placeholder="Illimité" />
+            <mat-hint>Saisissez un montant pour limiter ; vide = illimité</mat-hint>@if (c.creditLimit.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Conditions de paiement</mat-label>
             <mat-select formControlName="paymentPreset" (selectionChange)="preset()">@for (o of options(); track o.value) {<mat-option [value]="o.value">{{ o.label }}</mat-option>}<mat-option value="custom">Autre délai (en jours)</mat-option><mat-option value="free">Texte libre personnalisé</mat-option></mat-select>
             @if (canManage()) {<button matSuffix mat-icon-button type="button" aria-label="Gérer les conditions de paiement" title="Gérer les conditions de paiement" (click)="manage($event)"><app-icon name="settings" /></button>}</mat-form-field>
@@ -116,7 +116,8 @@ import { PAYMENT_METHODS, TERMS_EXAMPLES } from './customer.labels';
     .kind{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}.code{font-weight:600;color:var(--brand);background:var(--brand-50);padding:4px 12px;border-radius:999px}
     mat-button-toggle app-icon{margin-right:6px;vertical-align:middle}.wide{grid-column:1/-1}.flags{display:flex;gap:12px 28px;flex-wrap:wrap;margin:10px 0 6px;padding:10px 14px 14px;border:1px solid var(--border);border-radius:var(--r-md)}.flags legend{font-size:12px;font-weight:600;color:var(--muted);padding:0 6px}
     .free{margin-top:4px}.free mat-form-field{width:100%}.examples{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 14px;font-size:12px}
-    .ex{font:inherit;color:var(--brand);background:var(--brand-50);border:1px solid var(--brand-100);border-radius:999px;padding:3px 10px;cursor:pointer;text-align:left}.ex:hover{border-color:var(--brand)}.small{font-size:12px;margin:4px 0 12px}.notes{width:100%}`,
+    .ex{font:inherit;color:var(--brand);background:var(--brand-50);border:1px solid var(--brand-100);border-radius:999px;padding:3px 10px;cursor:pointer;text-align:left}.ex:hover{border-color:var(--brand)}.small{font-size:12px;margin:4px 0 12px}.notes{width:100%}
+    .credit input:not(:focus)::placeholder{color:var(--text)!important;opacity:1}`,
 })
 export class CustomerFields {
   form = input.required<CustomerForm>();

@@ -17,9 +17,10 @@ import { Skeleton } from '../../shared/components/skeleton';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
 import { PaymentDialog } from './payment-dialog';
 import { BlValidateDialog } from './bl-validate-dialog';
-import { BL_BILLING_LABELS, CREDIT_EFFECTS, DOC_CONFIG, DocConfig, DocKind, PAYMENT_METHOD_LABELS, PaymentDto, PROGRESS_LABELS, SalesDoc, STATUS_LABELS, WarehouseOption } from './sales.models';
+import { BL_BILLING_LABELS, CREDIT_EFFECTS, DOC_CONFIG, DocConfig, DocKind, PAYMENT_METHOD_LABELS, PaymentDto, PrintedCustomer, PROGRESS_LABELS, SalesDoc, STATUS_LABELS, WarehouseOption } from './sales.models';
 import { Api } from '../../core/services/api.service';
 import { CancelProformaDialog } from './cycle/cancel-proforma-dialog';
+import { CustomerDetailsDialog } from './customer-details-dialog';
 import { CreditDialog } from './cycle/credit-dialog';
 import { DeliveryCancelDialog, ReturnDialog } from './cycle/delivery-dialogs';
 import { ProformaTracking } from './cycle/proforma-tracking';
@@ -49,7 +50,7 @@ import { QtyPipe } from '../../shared/pipes/quantity.pipe';
         @if (d()!.creditEffect) {<span class="chip info">{{ effectLabel(d()!.creditEffect!) }}</span>}
         <span class="muted">{{ (d()!.issueDate ?? d()!.deliveryDate) | date: 'dd/MM/yyyy' : 'UTC' }}@if (d()!.validUntil) { — valable jusqu’au {{ d()!.validUntil | date: 'dd/MM/yyyy' : 'UTC' }}}</span>
         @if (d()!.sentAt) {<span class="muted">· envoyé le {{ d()!.sentAt | date: 'dd/MM/yyyy' }}</span>}</div>
-      @if (kind() === 'invoices' && d()!.status === 'validated') {<div class="card info"><app-icon name="lock" /> Document validé et numéroté : il ne peut plus être modifié ni supprimé. Toute correction passe par une facture d’avoir.</div>}
+      @if (kind() === 'invoices' && d()!.status === 'validated') {<div class="card info"><app-icon name="lock" /> {{ d()!.type === 'credit_note' ? 'Document validé et numéroté : il ne peut plus être modifié ni supprimé. Toute correction passe par une facture d’avoir.' : 'Document validé et numéroté : lignes et montants ne peuvent plus être modifiés ni la facture supprimée. Toute correction de montant passe par une facture d’avoir.' }}</div>}
       @if (d()!.creditedInvoiceId) {<div class="card info"><app-icon name="undo" /> Avoir sur la facture <a [routerLink]="['/invoices', d()!.creditedInvoiceId]">voir</a> — motif : {{ d()!.creditReason }}</div>}
       @if (d()!.status === 'cancelled' && d()!.cancelReason) {<div class="card info cancelled-note"><app-icon name="block" /><span>Annulé{{ d()!.cancelledAt ? ' le ' + (d()!.cancelledAt | date: 'dd/MM/yyyy HH:mm') : '' }}{{ d()!.cancelledByName ? ' par ' + d()!.cancelledByName : '' }} : {{ d()!.cancelReason }}</span></div>}
       @if (d()!.origin === 'delivery' && d()!.status === 'draft') {<div class="card info"><app-icon name="local_shipping" /><span>Facture issue de bons de livraison : quantités, prix et remises sont ceux des livraisons. La créance sera créée à la validation.</span></div>}
@@ -106,6 +107,12 @@ import { QtyPipe } from '../../shared/pipes/quantity.pipe';
       </div>}
 
       @if (kind() === 'invoices' && d()!.status === 'validated' && d()!.type === 'invoice') {
+        <div class="card client" style="margin-top:16px"><div class="client-head"><h3>Coordonnées du client</h3>
+            @if (canCorrectCustomer()) {<button mat-stroked-button type="button" (click)="correctCustomer()"><app-icon name="edit" />Modifier les coordonnées du client</button>}</div>
+          <p class="who"><strong>{{ d()!.customer.name }}</strong>@for (line of coordinates(d()!.customer); track $index) {<span>{{ line }}</span>}</p>
+          @if (d()!.customerCorrections?.length) {<div class="history"><h4>Historique des corrections</h4>
+            @for (c of d()!.customerCorrections!; track $index) {<div class="fix"><span><strong>{{ c.at | date: 'dd/MM/yyyy HH:mm' }}</strong> — {{ c.reason }} <span class="muted">· {{ c.userName }}</span></span>
+              <span class="muted">Avant : {{ c.before.name }}@for (line of coordinates(c.before); track $index) { · {{ line }}}</span></div>}</div>}</div>
         <div class="bottom">
           <div class="card" style="flex:1;min-width:300px"><h3>Échéancier</h3>
             @for (s of d()!.schedule; track s.id) {<div class="inst"><span>{{ s.dueDate | date: 'dd/MM/yyyy' : 'UTC' }}</span><span>{{ s.amountMinor | money }}</span><span class="muted">payé {{ s.paidMinor | money }}@if (s.creditedMinor) { · avoir {{ s.creditedMinor | money }}} · reste {{ s.openMinor | money }}</span></div>}</div>
@@ -120,6 +127,7 @@ import { QtyPipe } from '../../shared/pipes/quantity.pipe';
     .links{display:flex;gap:16px;flex-wrap:wrap}.ship{margin-top:12px;overflow-wrap:anywhere}.links a{color:var(--brand)}.delivery strong{display:block;margin-bottom:4px}.pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.small{font-size:12px;margin:8px 0 0}.schedule-warn{margin-top:12px;display:flex;gap:8px;align-items:center;background:var(--accent-50);border-color:var(--accent-300);color:var(--accent-ink)}h3{margin:0 0 12px;font-size:16px}.bottom{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:flex-start}
     .lines{width:100%;border-collapse:collapse;min-width:640px}.lines th,.lines td{padding:8px;border-bottom:1px solid var(--erp-border);text-align:left}.lines th{color:var(--muted);font-weight:500;font-size:13px}.r{text-align:right!important}
     .totals div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.totals .b{font-weight:600;border-top:1px solid var(--erp-border);margin-top:4px;padding-top:6px}.totals .s{font-size:13px;color:var(--muted)}
+    .client-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.client-head h3{margin:0}.who{margin:10px 0 0;overflow-wrap:anywhere}.who span{display:block}.history{margin-top:12px;border-top:1px solid var(--erp-border)}.history h4{margin:10px 0 4px;font-size:13px}.fix{display:flex;flex-direction:column;padding:6px 0;font-size:13px;overflow-wrap:anywhere}
     .inst{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--erp-border);align-items:center}.cancelled{text-decoration:line-through;opacity:.6}`,
 })
 export class DocDetail {
@@ -207,6 +215,15 @@ export class DocDetail {
       case 'invoices': return d.status === 'draft';
       case 'delivery-notes': return d.status === 'draft';
     }
+  }
+  canCorrectCustomer = () => this.can('update') && this.auth.has('invoices:validate');
+  coordinates(c: PrintedCustomer) {
+    const a = c.address; const town = [a?.postalCode, a?.city].filter(Boolean).join(' ');
+    return [c.taxId && `Matricule fiscal : ${c.taxId}`, [a?.street, town, a?.country].filter(Boolean).join(', '), [c.phone, c.email].filter(Boolean).join(' · ')].filter((x): x is string => !!x);
+  }
+  correctCustomer() {
+    const d = this.d()!;
+    this.open(CustomerDetailsDialog, { id: d.id, number: d.number, customer: d.customer, canUpdateCustomer: this.auth.has('customers:update') }, 'Coordonnées du client corrigées');
   }
   pdf() { this.dl.openPdf(`/${this.kind()}/${this.id()}/pdf`).subscribe({ error: (e) => this.toast.error(errorMessage(e)) }); }
   send() {

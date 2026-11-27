@@ -50,6 +50,8 @@ export class SalesService {
   invoiceDeliveries(body: { deliveryNoteIds: string[]; mode: 'grouped' | 'individual'; lines?: object[]; issueDate?: string }) { return this.http.post<SalesDoc | { items: SalesDoc[] }>(`${this.api}/invoices/from-delivery-notes`, body); }
   returnable(deliveryId: string) { return this.http.get<Returnable>(`${this.api}/delivery-notes/${deliveryId}/returnable`); }
   returnDelivery(deliveryId: string, body: object) { return this.http.post<SalesDoc>(`${this.api}/delivery-notes/${deliveryId}/returns`, body); }
+  /** Facture validée : corrige les seules coordonnées imprimées du client. */
+  correctCustomer(invoiceId: string, body: object) { return this.http.put<SalesDoc>(`${this.api}/invoices/${invoiceId}/customer-details`, body); }
   payments(invoiceId: string) { return this.http.get<Page<PaymentDto>>(`${this.api}/invoices/${invoiceId}/payments`); }
   recordPayment(invoiceId: string, body: object) { return this.http.post<{ payment: PaymentDto; invoice: SalesDoc }>(`${this.api}/invoices/${invoiceId}/payments`, body); }
   cancelPayment(id: string, reason: string) { return this.http.post<PaymentDto>(`${this.api}/invoices/payments/${id}/cancel`, { reason }); }

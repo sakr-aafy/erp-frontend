@@ -17,6 +17,8 @@ export interface DocTotals {
 }
 export interface ScheduleItem { id?: string; dueDate: string; percent?: number | null; amountMinor?: number; paidMinor?: number; creditedMinor?: number; openMinor?: number }
 export type ProgressState = 'none' | 'partial' | 'full';
+export interface PrintedCustomer { name: string; taxId?: string | null; phone?: string | null; email?: string | null; address?: Address | null }
+export interface CustomerCorrection { at: string; userName: string | null; reason: string; before: PrintedCustomer; after: PrintedCustomer }
 export interface DeliveryReturn { id: string; date: string; warehouseId: string | null; reason: string; userName: string | null; lines: { lineId: string; designation: string; unit: string | null; quantity: number; serials: string[]; creditedQty: number }[] }
 export interface SalesDoc {
   /** Proforma : avancements indépendants du statut administratif. */
@@ -26,7 +28,9 @@ export interface SalesDoc {
   billing?: 'none' | 'partial' | 'full' | 'source'; invoiceIds?: string[]; returns?: DeliveryReturn[]; returnable?: boolean; warehouseId?: string | null; validatedByName?: string | null; validatedAt?: string | null;
   /** Facture issue de BL et avoirs. */
   origin?: 'delivery' | null; linesLocked?: boolean; creditEffect?: CreditEffect | null; sourceRefs?: { quotationNumber?: string; quotationVersion?: number; proformaNumber?: string } | null;
-  id: string; number: string | null; status: string; type?: 'invoice' | 'credit_note'; customerId: string; customer: { name: string; code?: string | null; taxId?: string | null; shippingAddress?: Address | null };
+  id: string; number: string | null; status: string; type?: 'invoice' | 'credit_note'; customerId: string; customer: { name: string; code?: string | null; taxId?: string | null; phone?: string | null; email?: string | null; address?: Address | null; shippingAddress?: Address | null };
+  /** Facture validée : corrections successives des coordonnées imprimées. */
+  customerCorrections?: CustomerCorrection[];
   deliveryAddress?: AddressSnapshot | null; paymentTerms?: string | null; paymentTermsCustom?: boolean;
   issueDate?: string; validUntil?: string; deliveryDate?: string; lines: DocLine[]; totals: DocTotals;
   /** Ancienne remise globale (documents antérieurs), remise globale recopiée sur les lignes, remise supplémentaire en montant. */
