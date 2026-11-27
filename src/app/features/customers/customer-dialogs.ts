@@ -11,7 +11,7 @@ import { errorMessage } from '../../core/services/api';
 import { Icon } from '../../shared/components/icon';
 import { Contact } from '../../shared/models/api.models';
 import { ACTIVITY_KINDS, DOC_TYPES, formatBytes } from './customer.labels';
-import { ActivityDto, DocumentDto } from './customer.types';
+import { DocumentDto } from './customer.types';
 
 const PHONE_OK = (v: string) => !v || /^\+?[\d\s().\-/]{6,25}$/.test(v);
 
@@ -54,7 +54,8 @@ export class ContactDialog {
 }
 
 // ---------- Activité ----------
-export interface ActivityDialogData { activity?: ActivityDto; submit: (v: { kind: string; title: string; description?: string; occurredAt: string }) => Observable<unknown> }
+/** `kinds` / `types` : listes propres à la fiche appelante (client par défaut, fournisseur sinon). */
+export interface ActivityDialogData { activity?: { kind: string; title: string; description: string | null; occurredAt: string }; kinds?: { value: string; label: string }[]; submit: (v: { kind: string; title: string; description?: string; occurredAt: string }) => Observable<unknown> }
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 @Component({
   selector: 'app-activity-dialog',
@@ -74,7 +75,7 @@ const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 6
   styles: SHELL,
 })
 export class ActivityDialog {
-  data = inject<ActivityDialogData>(MAT_DIALOG_DATA); private ref = inject(MatDialogRef<ActivityDialog>); kinds = ACTIVITY_KINDS;
+  data = inject<ActivityDialogData>(MAT_DIALOG_DATA); private ref = inject(MatDialogRef<ActivityDialog>); kinds: { value: string; label: string }[] = this.data.kinds ?? ACTIVITY_KINDS;
   form = new FormBuilder().nonNullable.group({
     kind: [this.data.activity?.kind ?? 'call'], title: [this.data.activity?.title ?? '', [Validators.required, Validators.minLength(2), Validators.maxLength(150)]],
     description: [this.data.activity?.description ?? '', Validators.maxLength(2000)], occurredAt: [localInput(this.data.activity ? new Date(this.data.activity.occurredAt) : new Date()), Validators.required],
@@ -89,7 +90,7 @@ export class ActivityDialog {
 }
 
 // ---------- Document ----------
-export interface DocumentDialogData { document?: DocumentDto; submit: (v: { type: string; description?: string; file: File | null }) => Observable<unknown> }
+export interface DocumentDialogData { document?: DocumentDto; types?: { value: string; label: string }[]; submit: (v: { type: string; description?: string; file: File | null }) => Observable<unknown> }
 const MAX = 10 * 1024 * 1024; const ACCEPT = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx';
 @Component({
   selector: 'app-document-dialog',
@@ -115,8 +116,8 @@ const MAX = 10 * 1024 * 1024; const ACCEPT = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx';
     .drop:hover,.drop:focus-within{border-color:var(--brand);background:var(--brand-50)}.drop.has{border-style:solid;border-color:var(--brand);background:var(--brand-50)}.drop app-icon{color:var(--brand);--icon-size:1.6rem}`,
 })
 export class DocumentDialog {
-  data = inject<DocumentDialogData>(MAT_DIALOG_DATA); private ref = inject(MatDialogRef<DocumentDialog>); types = DOC_TYPES; accept = ACCEPT; size = formatBytes;
-  form = new FormBuilder().nonNullable.group({ type: [this.data.document?.type ?? 'registry_extract'], description: [this.data.document?.description ?? ''] });
+  data = inject<DocumentDialogData>(MAT_DIALOG_DATA); private ref = inject(MatDialogRef<DocumentDialog>); types: { value: string; label: string }[] = this.data.types ?? DOC_TYPES; accept = ACCEPT; size = formatBytes;
+  form = new FormBuilder().nonNullable.group({ type: [this.data.document?.type ?? this.types[0]!.value], description: [this.data.document?.description ?? ''] });
   file = signal<File | null>(null); busy = signal(false); error = signal('');
   pick(e: Event) {
     const f = (e.target as HTMLInputElement).files?.[0] ?? null; this.error.set('');

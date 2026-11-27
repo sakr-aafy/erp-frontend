@@ -12,5 +12,8 @@ export function routesFor(kind: DocKind): Routes {
     { path: ':id', data: { kind }, loadComponent: () => import('./doc-detail').then((m) => m.DocDetail) },
   ];
 }
-export const QUOTATION_ROUTES = routesFor('quotations'); export const PROFORMA_ROUTES = routesFor('proformas');
+/** Les devis ont leur liste et leur fiche (statuts, activité) ; le formulaire est commun aux documents de vente. */
+export const QUOTATION_ROUTES: Routes = routesFor('quotations').map((r) => (r.path === '' ? { ...r, loadComponent: () => import('./quotations/quotation-list').then((m) => m.QuotationList) }
+  : r.path === ':id' ? { ...r, loadComponent: () => import('./quotations/quotation-detail').then((m) => m.QuotationDetail) } : r));
+export const PROFORMA_ROUTES = routesFor('proformas');
 export const INVOICE_ROUTES = routesFor('invoices'); export const DELIVERY_ROUTES = routesFor('delivery-notes');

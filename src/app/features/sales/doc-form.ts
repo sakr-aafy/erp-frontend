@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { Icon } from '../../shared/components/icon';
@@ -18,6 +19,8 @@ import { AddressSnapshot, Customer2 } from '../../shared/models/api.models';
 import { Skeleton } from '../../shared/components/skeleton';
 import { MoneyPipe } from '../../shared/pipes/money.pipe';
 import { FiscalService } from '../fiscal/fiscal.service';
+import { ArticleSearch, ArticleSearchValue } from '../products/article-search';
+import { ProductService } from '../products/product.service';
 import { CalcPreview, DOC_CONFIG, DocConfig, DocKind, PAYMENT_METHOD_LABELS, SalesDoc, SourceLines } from './sales.models';
 import { SalesService } from './sales.service';
 
@@ -29,7 +32,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
 
 @Component({
   selector: 'app-doc-form',
-  imports: [AddressSelect, ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, Icon, MatAutocompleteModule, PageHeader, Skeleton, MoneyPipe],
+  imports: [AddressSelect, ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, Icon, MatAutocompleteModule, PageHeader, Skeleton, MoneyPipe, ArticleSearch, CdkDropList, CdkDrag, CdkDragHandle],
   template: `
     <div class="page">
       <app-page-header [title]="(id() ? 'Modifier ' + (cfg().gender === 'f' ? 'la ' : 'le ') : cfg().gender === 'f' ? 'Nouvelle ' : 'Nouveau ') + cfg().singular" [subtitle]="subtitle()" />
@@ -72,6 +75,32 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
                 <td class="r"><input class="q" type="number" min="0" [max]="l.remainingQty" step="0.001" [formControl]="srcQty.at(i)" [attr.aria-label]="'Quantité à livrer ' + l.designation" /></td>
                 <td>@if (l.hasSerial) {<textarea rows="2" [formControl]="srcSerials.at(i)" placeholder="un numéro par ligne" [attr.aria-label]="'Numéros de série ' + l.designation"></textarea>}</td></tr>}</tbody></table></div>
             <p class="muted">Quantité partielle autorisée : le reste pourra être livré par un autre bon de livraison.</p>
+          </div>
+        } @else if (kind() === 'quotations') {
+          <div class="card sec"><h3>Lignes</h3>
+            <div class="table-wrap"><table class="lines quote"><thead><tr><th>Pos.</th><th>Référence</th><th>Désignation</th><th class="r">Qté</th><th class="r">P.U. HT ({{ ref.symbol() }})</th><th class="r">Rem.%</th><th>TVA</th><th class="r">Total HT</th><th><span class="sr">Ordre et suppression</span></th></tr></thead>
+              <tbody cdkDropList (cdkDropListDropped)="drop($event)">
+                @if (!lines.length) {<tr><td colspan="9" class="muted">Aucune ligne : ajoutez un article du catalogue ou une ligne libre.</td></tr>}
+                @for (g of lines.controls; track g; let i = $index; let first = $first; let last = $last) {
+                <tr [formGroup]="g" cdkDrag cdkDragLockAxis="y">
+                  <td class="pos"><span class="handle" cdkDragHandle title="Glisser pour réorganiser"><app-icon name="drag_indicator" /></span><strong>{{ (i + 1) * 10 }}</strong></td>
+                  <td class="ref">{{ g.controls.reference.value || '—' }}</td>
+                  <td><input class="w" formControlName="designation" placeholder="Désignation" aria-label="Désignation" /></td>
+                  <td class="r"><input class="q" type="number" min="0.001" step="0.001" formControlName="quantity" aria-label="Quantité" />@if (g.controls.unit.value) {<small class="muted">{{ g.controls.unit.value }}</small>}</td>
+                  <td class="r"><input class="p" type="number" min="0" [step]="1 / 10 ** ref.decimals()" formControlName="unitPrice" aria-label="Prix unitaire" /></td>
+                  <td class="r"><input class="d" type="number" min="0" max="100" step="0.01" formControlName="discountPct" aria-label="Remise %" [class.bad]="g.controls.discountPct.invalid" />@if (g.controls.discountPct.invalid) {<small class="err-t" role="alert">0 à 100 %</small>}</td>
+                  <td><select formControlName="vatCode" aria-label="Code TVA"><option value="">—</option>@for (v of ref.vatRates(); track v.code) {<option [value]="v.code">{{ v.code }} ({{ vatText(v) }})</option>}</select></td>
+                  <td class="r total">{{ lineTotals().get(g) | money }}</td>
+                  <td class="tools"><button mat-icon-button type="button" [disabled]="first" (click)="move(i, -1)" [attr.aria-label]="'Monter la ligne ' + (i + 1) * 10"><app-icon name="arrow_up" /></button>
+                    <button mat-icon-button type="button" [disabled]="last" (click)="move(i, 1)" [attr.aria-label]="'Descendre la ligne ' + (i + 1) * 10"><app-icon name="arrow_down" /></button>
+                    <button mat-icon-button type="button" (click)="lines.removeAt(i)" aria-label="Retirer la ligne"><app-icon name="delete" /></button></td>
+                </tr>}</tbody></table></div>
+            <div class="add">
+              <app-article-search class="picker" label="Ajouter un article du catalogue" placeholder="Référence ou désignation" [resetOnPick]="true" [filters]="{ status: 'active' }" (changed)="pickArticle($event)" />
+              <button mat-stroked-button type="button" (click)="addFree()"><app-icon name="add" />Ligne libre</button>
+            </div>
+            <p class="muted small">Positions attribuées automatiquement (10, 20, 30…). Le prix, la désignation et la TVA proposés viennent de la fiche article ; les modifier ici ne change pas le référentiel.</p>
+            @if (!ref.vatRates().length) {<p class="err-t">Aucune règle de TVA validée : configurez-les dans <a routerLink="/fiscal">Fiscalité</a>.</p>}
           </div>
         } @else {
           <div class="card sec"><h3>Lignes</h3>
@@ -143,7 +172,9 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
     .lines textarea{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;width:100%;min-width:180px}
     .lines input,.lines select{font:inherit;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;background:#fff}.w{width:100%;min-width:200px}.q{width:80px;text-align:right}.p{width:110px;text-align:right}.d{width:70px;text-align:right}
     .add{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.bottom{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
-    .totals div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.totals .b{font-weight:600;border-top:1px solid var(--erp-border);margin-top:4px;padding-top:6px}.totals .s{font-size:13px;color:var(--muted)}`,
+    .totals div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.totals .b{font-weight:600;border-top:1px solid var(--erp-border);margin-top:4px;padding-top:6px}.totals .s{font-size:13px;color:var(--muted)}
+    .lines.quote{min-width:900px}.quote th,.quote td{padding:6px 5px}.quote th:last-child,.quote td:last-child{padding-right:9px}.quote .pos{white-space:nowrap;width:58px}.handle{display:inline-grid;place-items:center;width:22px;height:32px;margin-right:2px;color:var(--muted);cursor:grab;vertical-align:middle}.quote .ref{color:var(--brand);font-weight:600;max-width:104px;overflow-wrap:anywhere}.quote .total{white-space:nowrap;font-weight:600;font-variant-numeric:tabular-nums}.quote .tools{white-space:nowrap;width:1%}.quote .tools button{--mat-icon-button-state-layer-size:32px;padding:6px}.quote input,.quote select{box-sizing:border-box}.quote .w{min-width:150px}.quote .q{width:72px}.quote .p{width:108px}.quote .d{width:68px}.quote select{width:122px}.quote small{display:block;font-size:11px}.bad{border-color:var(--danger)!important}
+    .picker{flex:1;min-width:260px}.small{font-size:12px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.cdk-drag-preview{display:table;background:var(--surface);box-shadow:var(--shadow-md)}.cdk-drag-placeholder{opacity:.35}`,
 })
 export class DocForm {
   kind = input.required<DocKind>();
@@ -208,15 +239,24 @@ export class DocForm {
   customerName = (c: { name: string } | string | null) => (typeof c === 'string' ? c : c?.name ?? '');
   vatText = (v: { regime: string; ratePct?: number }) => (v.regime === 'taxable' ? `${v.ratePct} %` : ({ zero: '0 %', exempt: 'exonéré', suspended: 'suspension' } as Record<string, string>)[v.regime]);
 
-  lineGroup(l?: { productId?: string | null; reference?: string | null; designation?: string; description?: string | null; unit?: string | null; quantity?: number; unitPriceMinor?: number; discountPct?: number; vatCode?: string }) {
+  lineGroup(l?: { id?: string; productId?: string | null; reference?: string | null; designation?: string; description?: string | null; unit?: string | null; quantity?: number; unitPriceMinor?: number; discountPct?: number; vatCode?: string }) {
     return this.fb.nonNullable.group({
-      productId: [l?.productId ?? ''], reference: [l?.reference ?? ''], designation: [l?.designation ?? '', Validators.required], description: [l?.description ?? ''], unit: [l?.unit ?? ''],
+      id: [l?.id ?? ''], productId: [l?.productId ?? ''], reference: [l?.reference ?? ''], designation: [l?.designation ?? '', Validators.required], description: [l?.description ?? ''], unit: [l?.unit ?? ''],
       quantity: [l?.quantity ?? 1, [Validators.required, Validators.min(0.001)]], unitPrice: [l?.unitPriceMinor != null ? this.ref.fromMinor(l.unitPriceMinor) : 0, [Validators.required, Validators.min(0)]],
       discountPct: [l?.discountPct ?? 0, [Validators.min(0), Validators.max(100)]], vatCode: [l?.vatCode ?? '', Validators.required],
     });
   }
   installment(i?: { dueDate?: string; percent?: number | null }) { return this.fb.nonNullable.group({ dueDate: [iso(i?.dueDate) || addDays(30), Validators.required], percent: [i?.percent ?? 100, [Validators.required, Validators.min(0.01), Validators.max(100)]] }); }
   addFree() { this.lines.push(this.lineGroup()); }
+  /** Réorganisation (boutons ou glisser-déposer) : les lignes gardent leur identifiant, les positions suivent l'ordre. */
+  move(i: number, delta: number) { const to = i + delta; if (to < 0 || to >= this.lines.length) return; const g = this.lines.at(i); this.lines.removeAt(i, { emitEvent: false }); this.lines.insert(to, g); this.lines.markAsDirty(); }
+  drop(e: CdkDragDrop<unknown>) { this.move(e.previousIndex, e.currentIndex - e.previousIndex); }
+  private products = inject(ProductService);
+  /** Article choisi : référence, désignation, unité, prix de vente HT et TVA repris de sa fiche. */
+  pickArticle(v: ArticleSearchValue) {
+    if (!v.product) return;
+    this.products.get(v.product.id).subscribe({ next: (p) => this.addProduct({ id: p.id, reference: p.reference, name: p.name, salePriceMinor: p.salePriceMinor, vatRateCode: p.vatRateCode, unitCode: p.unitCode }), error: (e) => this.toast.error(errorMessage(e)) });
+  }
   addInstallment() { this.schedule.push(this.installment({ percent: Math.max(0, 100 - this.schedule.controls.reduce((s, g) => s + Number(g.controls.percent.value || 0), 0)) || 100 })); }
   addProduct(p: { id: string; reference: string; name: string; salePriceMinor: number; vatRateCode: string; unitCode: string | null }) {
     // retire une ligne libre restée vide avant d'ajouter l'article
@@ -291,17 +331,22 @@ export class DocForm {
     return h.discountMode === 'pct' ? { globalDiscountPct: v, globalDiscountMinor: 0 } : { globalDiscountPct: 0, globalDiscountMinor: this.ref.toMinor(v) };
   }
   private lineBodies() {
-    return this.lines.getRawValue().map((l) => ({ ...(l.productId && { productId: l.productId }), designation: l.designation, ...(l.description && { description: l.description }), ...(l.unit && { unit: l.unit }),
+    const keepIds = this.kind() === 'quotations';
+    return this.lines.getRawValue().map((l) => ({ ...(keepIds && l.id && { id: l.id }), ...(l.productId && { productId: l.productId }), designation: l.designation, ...(l.description && { description: l.description }), ...(l.unit && { unit: l.unit }),
       quantity: Number(l.quantity), unitPriceMinor: this.ref.toMinor(Number(l.unitPrice)), discountPct: Number(l.discountPct) || 0, vatCode: l.vatCode }));
   }
+  /** Total HT renvoyé par le serveur, rattaché à la ligne elle-même : il la suit quand on la déplace. */
+  lineTotals = signal(new Map<unknown, number | undefined>());
+  private calcSeq = 0;
   private recalc() {
     if (this.srcMode()) return;
     const ok = this.customerId() && this.lines.length && this.lines.controls.every((g) => g.valid);
-    if (!ok) { this.preview.set(null); this.calcError.set(''); return; }
-    const h = this.header.getRawValue();
+    if (!ok) { this.calcSeq++; this.preview.set(null); this.lineTotals.set(new Map()); this.calcError.set(''); return; }
+    const h = this.header.getRawValue(); const groups = [...this.lines.controls]; const seq = ++this.calcSeq;
     this.svc.calculate({ docType: this.cfg().calcType, customerId: this.customerId(), ...(h.issueDate && { issueDate: h.issueDate }), lines: this.lineBodies(), ...this.discountParts(),
       ...(this.kind() === 'invoices' && h.withholdingOperationType && { withholdingOperationType: h.withholdingOperationType }) }).subscribe({
-      next: (p) => { this.preview.set(p); this.calcError.set(''); }, error: (e) => { this.preview.set(null); this.calcError.set(errorMessage(e)); },
+      next: (p) => { if (seq !== this.calcSeq) return; this.preview.set(p); this.lineTotals.set(new Map(groups.map((g, i) => [g, p.lines[i]?.netHtMinor]))); this.calcError.set(''); },
+      error: (e) => { if (seq !== this.calcSeq) return; this.preview.set(null); this.lineTotals.set(new Map()); this.calcError.set(errorMessage(e)); },
     });
   }
 

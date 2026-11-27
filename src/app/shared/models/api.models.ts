@@ -46,12 +46,19 @@ export interface Customer2 {
   creditExceeded: boolean; subjectToWithholding: boolean; stampExempt: boolean; notes: string | null;
   status: CustomerStatus; statusLabel: string; statusReason: string | null; statusChangedAt: string | null; isArchived: boolean; canSell: boolean; createdAt?: string;
 }
+export type SupplierStatus = 'active' | 'inactive' | 'archived' | 'blocked';
+/** Les montants sont null sans permission Achats, Trésorerie ou Comptabilité. */
 export interface SupplierDto {
-  id: string; code: string | null; name: string; tradeName: string | null; taxId: string | null; address: Address; deliveryAddresses: DeliveryAddress[]; phone: string | null; email: string | null; contacts: Contact[];
-  leadTimeDays: number | null; paymentTerms: string | null; paymentDelayDays: number; balanceMinor: number; blockThresholdMinor: number | null;
-  effectiveThresholdMinor: number | null; ordersBlocked: boolean; isForeign: boolean; currency: string | null; notes: string | null; isArchived: boolean;
+  id: string; code: string | null; categoryId: string | null; categoryName: string | null; categoryActive: boolean | null; name: string; tradeName: string | null; taxId: string | null; address: Address; deliveryAddresses: DeliveryAddress[];
+  phone: string | null; secondaryPhone: string | null; phoneInfo: PhoneInfo | null; secondaryPhoneInfo: PhoneInfo | null; email: string | null; website: string | null;
+  social: { facebook: string | null; linkedin: string | null; instagram: string | null }; mapsUrl: string | null; contacts: Contact[];
+  primaryContact: { name: string; role: string | null; phone: string | null; phoneInfo: PhoneInfo | null; email: string | null } | null;
+  leadTimeDays: number | null; paymentTerms: string | null; paymentTermsCustom: boolean; paymentDelayDays: number; paymentMethod: string | null; discountPct: number;
+  balanceMinor: number | null; blockThresholdMinor: number | null; effectiveThresholdMinor: number | null; ordersBlocked: boolean; canOrder: boolean;
+  isForeign: boolean; currency: string | null; notes: string | null; status: SupplierStatus; statusLabel: string; statusReason: string | null; isArchived: boolean; createdAt?: string;
 }
-export interface ListResponse<T> extends Page<T> { summary?: { totalBalanceMinor: number } }
+export interface SupplierCategoryDto { id: string; name: string; description: string | null; isActive: boolean; supplierCount: number; createdAt?: string; updatedAt?: string }
+export interface ListResponse<T> extends Page<T> { summary?: { totalBalanceMinor: number | null } }
 export type ProductStatus = 'active' | 'inactive' | 'archived' | 'blocked';
 export interface ProductPackaging {
   lengthMm: number | null; widthMm: number | null; heightMm: number | null; netWeightKg: number | null; grossWeightKg: number | null; type: string | null; typeLabel: string | null;

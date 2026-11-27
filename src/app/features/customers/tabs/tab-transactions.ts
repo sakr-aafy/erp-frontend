@@ -64,7 +64,7 @@ export class TabTransactions {
   c = input.required<Customer2>(); allowed = input<DocKind[]>([]);
   private svc = inject(CustomerService); private toast = inject(ToastService); private dl = inject(DownloadService); private auth = inject(AuthService); private destroy = inject(DestroyRef);
   cols = ['ref', 'type', 'date', 'ht', 'ttc', 'status', 'actions']; label = KIND_LABEL; icon = KIND_ICON; docStatus = DOC_STATUS;
-  statuses = ['pending', 'accepted', 'refused', 'expired', 'converted', 'cancelled', 'draft', 'validated', 'unpaid', 'partial', 'paid'];
+  statuses = ['pending', 'sent', 'accepted', 'refused', 'expired', 'converted', 'cancelled', 'draft', 'validated', 'unpaid', 'partial', 'paid'];
   rows = signal<TxRow[]>([]); total = signal(0); loading = signal(true); page = signal(0); pageSize = signal(20);
   kinds = signal<DocKind[]>([]);
   type = signal<DocKind | ''>(''); status = signal(''); from = signal(''); to = signal(''); q = new FormControl('', { nonNullable: true });

@@ -10,7 +10,7 @@ import { debounceTime, of, switchMap } from 'rxjs';
 import { Api } from '../../core/services/api.service';
 import { ReferenceDataService } from '../../core/services/reference-data.service';
 
-export interface LineOpts { price?: boolean; discount?: boolean; vat?: boolean; serials?: boolean; priceDecimals?: number; priceLabel?: string; forbidFree?: boolean }
+export interface LineOpts { price?: boolean; discount?: boolean; vat?: boolean; serials?: boolean; priceDecimals?: number; priceLabel?: string; forbidFree?: boolean; /** Remise proposée sur une nouvelle ligne (remise habituelle du fournisseur). */ defaultDiscount?: number }
 export const lineGroup = (fb: FormBuilder, l: Partial<{ productId: string; reference: string; designation: string; quantity: number; unitPrice: number; discountPct: number; vatCode: string; orderLineId: string; serials: string }> = {}) =>
   fb.nonNullable.group({ productId: [l.productId ?? ''], reference: [l.reference ?? ''], designation: [l.designation ?? '', Validators.required], quantity: [l.quantity ?? 1, [Validators.required, Validators.min(0.001)]],
     unitPrice: [l.unitPrice ?? 0, [Validators.required, Validators.min(0)]], discountPct: [l.discountPct ?? 0, [Validators.min(0), Validators.max(100)]], vatCode: [l.vatCode ?? ''], orderLineId: [l.orderLineId ?? ''], serials: [l.serials ?? ''] });
@@ -48,7 +48,7 @@ export class LinesEditor {
   constructor() { this.search.valueChanges.pipe(debounceTime(250), switchMap((v) => (v.length ? this.api.get('/products', { q: v, limit: 10, active: 'true' }) : of(null))), takeUntilDestroyed()).subscribe((r) => { if (r) this.options.set(r.items); }); }
   add(p: { id: string; reference: string; name: string; purchasePriceMinor: number | null; vatRateCode: string; purchaseCurrency?: string | null }) {
     const inBase = !!this.opts().price && !this.opts().priceDecimals; // prix attendu dans la devise de base
-    const group = lineGroup(this.fb, { productId: p.id, reference: p.reference, designation: p.name, unitPrice: inBase && p.purchasePriceMinor !== null ? this.ref.fromMinor(p.purchasePriceMinor) : 0, vatCode: '' });
+    const group = lineGroup(this.fb, { productId: p.id, reference: p.reference, designation: p.name, unitPrice: inBase && p.purchasePriceMinor !== null ? this.ref.fromMinor(p.purchasePriceMinor) : 0, discountPct: this.opts().defaultDiscount ?? 0, vatCode: '' });
     if (inBase && p.purchasePriceMinor === null && p.purchaseCurrency) {
       // Le taux estimatif de la fiche n'est jamais proposé : prix au taux RÉEL du jour, sinon à saisir
       group.controls.unitPrice.setValue(null as unknown as number);

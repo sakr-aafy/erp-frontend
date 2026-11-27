@@ -141,7 +141,6 @@ export class DocDetail {
     if (k === 'invoices' && d.status === 'draft' && this.auth.has('invoices:validate')) return { label: 'Valider la facture', icon: 'verified', run: () => this.ask('Valider', `Valider ${d.type === 'credit_note' ? 'l’avoir' : 'la facture'} ? Un numéro légal sera attribué, le solde du client sera mis à jour et le document ne pourra plus être modifié.`, 'Valider définitivement', () => this.run(this.svc.action(k, d.id, 'validate'), 'Document validé')) };
     if (k === 'invoices' && d.status === 'validated' && d.type === 'invoice' && (d.balanceDueMinor ?? 0) > 0 && this.can('update')) return { label: 'Encaisser', icon: 'payments', run: () => this.dialog.open(PaymentDialog, { data: { invoiceId: d.id, number: d.number, dueMinor: d.balanceDueMinor } }).afterClosed().subscribe((r) => { if (r) { this.toast.success('Encaissement enregistré'); this.load(); } }) };
     if (k === 'delivery-notes' && d.status === 'draft' && this.can('validate')) return { label: 'Valider la livraison', icon: 'verified', run: () => this.dialog.open(BlValidateDialog, { data: { id: d.id } }).afterClosed().subscribe((r) => { if (r) { this.toast.success('Bon de livraison validé : stock mis à jour'); this.load(); } }) };
-    if (k === 'quotations' && d.status === 'pending' && this.can('update')) return { label: 'Accepter', icon: 'check_circle', run: () => this.run(this.svc.action(k, d.id, 'accept'), 'Devis accepté') };
     if (k === 'proformas' && d.status === 'pending' && this.auth.has('invoices:create')) return { label: 'Convertir en facture', icon: 'receipt', run: () => this.run(this.svc.action<{ invoiceId: string }>(k, d.id, 'convert-invoice'), 'Facture brouillon créée', (r: { invoiceId: string }) => this.go(['/invoices', r.invoiceId])) };
     if (k === 'delivery-notes' && d.status === 'validated' && !d.invoiced && this.auth.has('invoices:create')) return { label: 'Facturer', icon: 'receipt', run: () => this.run(this.svc.invoiceFromDeliveryNotes([d.id]), 'Facture brouillon créée', (r: SalesDoc) => this.go(['/invoices', r.id])) };
     return null;
@@ -149,15 +148,6 @@ export class DocDetail {
   actions() {
     const d = this.d()!; const k = this.kind(); const out: { label: string; icon: string; color?: string; run: () => void }[] = [];
     const bl = this.auth.has('deliveryNotes:create');
-    if (k === 'quotations') {
-      if (d.status === 'pending' && this.can('update')) out.push({ label: 'Refuser', icon: 'cancel', run: () => this.ask('Refuser le devis', 'Le devis passera au statut « refusé ».', 'Refuser', () => this.run(this.svc.action(k, d.id, 'refuse'), 'Devis refusé')) });
-      if (this.can('create')) out.push({ label: 'Dupliquer', icon: 'content_copy', run: () => this.run(this.svc.action(k, d.id, 'duplicate'), 'Devis dupliqué', (r: SalesDoc) => this.go(['/quotations', r.id, 'edit'])) });
-      if (['pending', 'accepted'].includes(d.status) && !d.proformaId && !d.invoiceId && this.can('update')) {
-        if (this.auth.has('proformas:create')) out.push({ label: 'Convertir en proforma', icon: 'description', run: () => this.run(this.svc.action<{ proformaId: string }>(k, d.id, 'convert-proforma'), 'Proforma créée', (r: { proformaId: string }) => this.go(['/proformas', r.proformaId])) });
-        if (this.auth.has('invoices:create')) out.push({ label: 'Convertir en facture', icon: 'receipt', run: () => this.run(this.svc.action<{ invoiceId: string }>(k, d.id, 'convert-invoice'), 'Facture brouillon créée', (r: { invoiceId: string }) => this.go(['/invoices', r.invoiceId])) });
-      }
-      if (d.status === 'accepted' && !d.proformaId && !d.invoiceId && bl) out.push({ label: 'Créer un BL', icon: 'local_shipping', run: () => this.router.navigate(['/delivery-notes/new'], { queryParams: { sourceType: 'quotation', sourceId: d.id } }) });
-    }
     if (k === 'proformas') {
       if (d.status === 'pending' && this.can('update')) out.push({ label: 'Annuler', icon: 'cancel', run: () => this.ask('Annuler la proforma', 'Elle ne pourra plus être convertie.', 'Annuler la proforma', () => this.run(this.svc.action(k, d.id, 'cancel'), 'Proforma annulée'), true) });
       if (d.status === 'pending' && bl) out.push({ label: 'Créer un BL', icon: 'local_shipping', run: () => this.router.navigate(['/delivery-notes/new'], { queryParams: { sourceType: 'proforma', sourceId: d.id } }) });
@@ -172,7 +162,7 @@ export class DocDetail {
   }
   private deletable(d: SalesDoc) {
     switch (this.kind()) {
-      case 'quotations': return !d.proformaId && !d.invoiceId && d.status !== 'accepted';
+      case 'quotations': return false; // fiche dédiée (quotations/quotation-detail)
       case 'proformas': return d.status === 'pending' && !d.quotationId;
       case 'invoices': return d.status === 'draft';
       case 'delivery-notes': return d.status === 'draft';

@@ -83,18 +83,20 @@ export class TransferDialog {
       <strong>Affectation aux factures</strong>
       @if (!invoices().length) {<p class="muted">Aucune facture d’achat validée restant due.</p>}
       @for (i of invoices(); track i.id) {<div style="display:flex;gap:10px;align-items:center;margin-top:8px"><div style="flex:1"><strong>{{ i.number }}</strong> <span class="muted">({{ i.supplierInvoiceNumber }})</span><br><span class="muted">Reste dû {{ ref.format(i.balanceDueMinor) }}</span></div>
-        <mat-form-field appearance="outline" style="width:150px" subscriptSizing="dynamic"><mat-label>Montant</mat-label><input matInput type="number" min="0" [step]="1 / 10 ** ref.decimals()" [value]="amounts()[i.id] ?? ''" (input)="setAmount(i, $any($event.target).value)" /></mat-form-field></div>}
+        <mat-form-field appearance="outline" style="width:150px" subscriptSizing="dynamic"><mat-label>Montant</mat-label><input matInput type="number" min="0" [step]="1 / 10 ** ref.decimals()" [attr.value]="prefill(i)" aria-label="Montant à régler pour {{ i.number }}" (input)="setAmount(i, $any($event.target).value)" /></mat-form-field></div>}
       <p style="margin-top:12px"><strong>Total : {{ ref.format(total()) }}</strong></p></mat-dialog-content>
       <mat-dialog-actions align="end"><button mat-button type="button" mat-dialog-close>Annuler</button><button mat-flat-button color="primary" type="button" [disabled]="loading() || total() <= 0" (click)="save()">Enregistrer le règlement</button></mat-dialog-actions></form>`,
 })
 export class PaySupplierDialog {
-  data = inject<{ supplierId?: string; supplierName?: string; invoice?: any }>(MAT_DIALOG_DATA); private dlg = inject(MatDialogRef<PaySupplierDialog>); private api = inject(Api); ref = inject(ReferenceDataService); col = COL; methods = METHODS;  
+  data = inject<{ supplierId?: string; supplierName?: string; invoice?: any; method?: string | null }>(MAT_DIALOG_DATA); private dlg = inject(MatDialogRef<PaySupplierDialog>); private api = inject(Api); ref = inject(ReferenceDataService); col = COL; methods = METHODS;  
   error = signal(''); loading = signal(false); today = new Date().toISOString().slice(0, 10); accounts = signal<any[]>([]); suppliers = signal<any[]>([]); invoices = signal<any[]>([]); amounts = signal<Record<string, number>>({});  
-  form = new FormBuilder().nonNullable.group({ supplier: [this.data.supplierId ?? ''], account: ['', Validators.required], method: ['transfer'], paidAt: [this.today, Validators.required], reference: [''] });
+  form = new FormBuilder().nonNullable.group({ supplier: [this.data.supplierId ?? ''], account: ['', Validators.required], method: [this.data.method || 'transfer'], paidAt: [this.today, Validators.required], reference: [''] });
+  /** Valeur initiale d'un champ (unités principales) ; ensuite la saisie de l'utilisateur n'est jamais réécrite. */
+  prefill = (i: { id: string }) => { const a = this.amounts()[i.id]; return this.data.invoice?.id === i.id && a !== undefined ? this.ref.fromMinor(a) : null; };
   total = () => Object.values(this.amounts()).reduce((s, v) => s + v, 0);
   ngOnInit() {
     this.api.get('/treasury/accounts', { active: true }).subscribe((a) => { this.accounts.set(a); if (a.length === 1) this.form.controls.account.setValue(a[0].id); });
-    if (this.data.supplierId) this.pickSupplier(this.data.supplierId); else this.api.get('/suppliers', { limit: 100, withBalance: true }).subscribe((r) => this.suppliers.set(r.items));
+    if (this.data.supplierId) this.pickSupplier(this.data.supplierId); else this.api.get('/suppliers', { limit: 100, withBalance: true, status: 'all' }).subscribe((r) => this.suppliers.set(r.items));
   }
   pickSupplier(id: string) {
     this.amounts.set({});

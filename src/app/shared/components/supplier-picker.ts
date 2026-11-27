@@ -33,7 +33,7 @@ const PAGE = 20;
         (focus)="open()" (click)="open()" (input)="typed()" (blur)="onBlur()" />
       @if (lookup.loading()) {<mat-spinner matSuffix diameter="18" class="spin" aria-label="Chargement" />}
       @if (control().value && canSearch) {<button matSuffix mat-icon-button type="button" aria-label="Retirer le fournisseur" (click)="clear($event)"><app-icon name="close" /></button>}
-      <mat-autocomplete #auto="matAutocomplete" class="lookup-panel" panelWidth="min(380px, 92vw)" (optionSelected)="pick($event.option.value)" [displayWith]="show" (opened)="onOpened()" (closed)="onClosed()">
+      <mat-autocomplete #auto="matAutocomplete" class="lookup-panel" panelWidth="min(380px, calc(100vw - 76px))" (optionSelected)="pick($event.option.value)" [displayWith]="show" (opened)="onOpened()" (closed)="onClosed()">
         @for (s of lookup.items(); track s.id) {
           <mat-option [value]="s"><span class="opt"><span class="code">{{ s.code ?? '—' }}</span><span class="txt"><span class="name">{{ s.name }}</span>@if (s.tradeName) {<span class="sub">{{ s.tradeName }}</span>}</span>@if (s.isArchived) {<span class="chip off">Archivé</span>}</span></mat-option>}
         @if (lookup.loading()) {<mat-option disabled class="state">Chargement…</mat-option>}

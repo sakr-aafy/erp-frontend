@@ -72,7 +72,7 @@ export class TabTransactions {
   group = signal(''); from = signal(''); to = signal(''); status = signal(''); q = new FormControl('', { nonNullable: true });
   exportParams = () => ({ group: this.group(), status: this.status(), from: this.from(), to: this.to(), q: this.q.value });
   groupsOf = () => TX_GROUPS.filter((g) => !g.value || this.allowedGroups().includes(g.value) || this.allowedGroups().length === 0);
-  statuses = [{ v: 'pending', l: 'En attente' }, { v: 'confirmed', l: 'Confirmée' }, { v: 'partially_received', l: 'Partiellement reçue' }, { v: 'received', l: 'Reçue' }, { v: 'validated', l: 'Validé' }, { v: 'draft', l: 'Brouillon' }, { v: 'accepted', l: 'Accepté' }, { v: 'cancelled', l: 'Annulé' }];
+  statuses = [{ v: 'pending', l: 'En attente' }, { v: 'sent', l: 'Envoyé' }, { v: 'confirmed', l: 'Confirmée' }, { v: 'partially_received', l: 'Partiellement reçue' }, { v: 'received', l: 'Reçue' }, { v: 'validated', l: 'Validé' }, { v: 'draft', l: 'Brouillon' }, { v: 'accepted', l: 'Accepté' }, { v: 'cancelled', l: 'Annulé' }];
   amount = (r: TxRow, minor: number) => { const base = this.ref.data()?.baseCurrency; if (r.currency && r.currency !== base) { const d = this.ref.decimalsOf(r.currency); return (minor / 10 ** d).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }); } return this.ref.format(minor); };
   constructor() { this.q.valueChanges.pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed(this.destroy)).subscribe(() => this.reload()); effect(() => { void this.p(); }); }
   ngOnInit() { this.load(); }

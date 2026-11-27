@@ -1,6 +1,6 @@
 import { Component, inject, input, signal } from '@angular/core';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -8,6 +8,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { Api } from '../../../core/services/api.service';
 import { errorMessage } from '../../../core/services/api';
 import { ReferenceDataService } from '../../../core/services/reference-data.service';
+import { SupplierDto } from '../../../shared/models/api.models';
 import { ToastService } from '../../../core/services/toast.service';
 import { PageHeader } from '../../../shared/components/page-header';
 import { Skeleton } from '../../../shared/components/skeleton';
@@ -26,7 +27,12 @@ import { LineGroup, LinesEditor, PartyPicker, lineGroup } from '../lines-editor'
           <mat-form-field appearance="outline"><mat-label>Devise</mat-label><mat-select formControlName="currency" (selectionChange)="onCurrency()">@for (c of currencies(); track c.code) {<mat-option [value]="c.code">{{ c.code }} {{ c.name }}</mat-option>}</mat-select>@if (!currencies().length) {<mat-hint>Configurez les devises dans Paramètres</mat-hint>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Taux de change (vide = taux du jour)</mat-label><input matInput type="number" min="0" step="0.000001" formControlName="rate" /><mat-hint>1 {{ form.controls.currency.value || 'devise' }} = … {{ ref.data()?.baseCurrency }}</mat-hint></mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Date de commande</mat-label><input matInput type="date" formControlName="orderDate" /></mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Référence (commande fournisseur, proforma…)</mat-label><input matInput formControlName="reference" /></mat-form-field></div></div>
+          <mat-form-field appearance="outline"><mat-label>Référence (commande fournisseur, proforma…)</mat-label><input matInput formControlName="reference" /></mat-form-field></div>
+          @if (preset(); as s) {
+            @if (!s.isForeign) {<p role="alert" style="color:var(--danger);margin:0">Fournisseur local : créez une <a [routerLink]="['/purchase-orders', 'new']" [queryParams]="{ supplierId: s.id }">commande d’achat</a>.</p>}
+            @else if (s.status !== 'active') {<p role="alert" style="color:var(--danger);margin:0">Fournisseur {{ s.statusLabel.toLowerCase() }} : aucun nouveau dossier n’est possible.</p>}
+            @else if (s.paymentTerms || s.leadTimeDays !== null) {<p class="muted" style="margin:0;font-size:13px">@if (s.paymentTerms) {Conditions de paiement habituelles : {{ s.paymentTerms }}. }@if (s.leadTimeDays !== null) {Délai de livraison habituel : {{ s.leadTimeDays }} jour(s).}</p>}
+          }</div>
         <div class="card" style="margin-bottom:16px"><h3 style="margin:0 0 12px;font-size:16px">Articles importés</h3><app-lines-editor [array]="lines" [opts]="{ price: true, priceDecimals: decimals(), priceLabel: 'Prix unitaire (' + (form.controls.currency.value || 'devise') + ')' }" /></div>
         <div class="card" style="margin-bottom:16px"><mat-form-field appearance="outline" style="width:100%"><mat-label>Notes</mat-label><textarea matInput rows="2" formControlName="notes"></textarea></mat-form-field></div>
         <div class="toolbar-row"><span class="spacer"></span><a mat-button [routerLink]="id() ? ['/imports', id()] : ['/imports']">Annuler</a><button mat-flat-button color="primary" [disabled]="saving()">Enregistrer</button></div>
@@ -39,9 +45,19 @@ export class ImportForm {
   loading = signal(false); saving = signal(false); error = signal(''); currencies = () => (this.ref.data()?.currencies ?? []).filter((c) => c.code !== this.ref.data()?.baseCurrency);
   decimals = () => this.ref.decimalsOf(this.form.controls.currency.value || this.ref.data()?.baseCurrency || '');
   onCurrency() { /* la précision change : les prix saisis restent en unités principales */ }
+  private route = inject(ActivatedRoute); preset = signal<SupplierDto | null>(null);
+  /** Depuis la fiche fournisseur : fournisseur présélectionné avec sa devise habituelle. */
+  private preselect(supplierId: string) {
+    this.api.get<SupplierDto>(`/suppliers/${supplierId}`).subscribe({ next: (s) => {
+      this.preset.set(s); if (!s.isForeign || s.status !== 'active') return;
+      this.supplierId.set(s.id); this.supplierInit.set({ id: s.id, name: s.name }); if (s.currency) this.form.controls.currency.setValue(s.currency);
+    }, error: (e) => this.toast.error(errorMessage(e)) });
+  }
   ngOnInit() {
     this.ref.load$().subscribe(() => { const c = this.currencies(); if (!this.form.controls.currency.value && c.length === 1) this.form.controls.currency.setValue(c[0]!.code); });
-    const id = this.id(); if (!id) return; this.loading.set(true);
+    const id = this.id();
+    const preselected = this.route.snapshot.queryParamMap.get('supplierId'); if (!id && preselected) this.preselect(preselected);
+    if (!id) return; this.loading.set(true);
     this.api.get(`/imports/${id}`).subscribe({ next: (f) => { if (!f.editableLines) { this.toast.error('Lignes non modifiables à ce stade'); this.router.navigate(['/imports', id]); return; }
       this.supplierId.set(f.supplierId); this.supplierInit.set({ id: f.supplierId, name: f.supplier?.name }); this.form.patchValue({ currency: f.currency, rate: f.exchangeRate, orderDate: f.orderDate?.slice(0, 10), reference: f.reference ?? '', notes: f.notes ?? '' });
       f.lines.forEach((l: any) => this.lines.push(lineGroup(this.fb, { productId: l.productId, reference: l.reference ?? '', designation: l.designation ?? '', quantity: l.quantity, unitPrice: this.ref.fromMinor(l.unitPriceMinor, this.ref.decimalsOf(f.currency)) }))); this.loading.set(false); }, error: (e) => { this.toast.error(errorMessage(e)); this.router.navigate(['/imports']); } });  

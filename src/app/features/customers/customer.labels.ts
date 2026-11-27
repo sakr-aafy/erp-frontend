@@ -20,16 +20,16 @@ export const TERMS_EXAMPLES = [
 export const KIND_LABEL: Record<string, string> = { quotation: 'Devis', proforma: 'Facture proforma', invoice: 'Facture', credit_note: 'Avoir', delivery_note: 'Bon de livraison' };
 export const KIND_ICON: Record<string, string> = { quotation: 'request_quote', proforma: 'description', invoice: 'receipt_long', credit_note: 'undo', delivery_note: 'local_shipping' };
 export const DOC_STATUS: Record<string, string> = {
-  pending: 'En attente', accepted: 'Accepté', refused: 'Refusé', expired: 'Expiré', converted: 'Converti', cancelled: 'Annulé', draft: 'Brouillon', validated: 'Validé', unpaid: 'Impayée', partial: 'Partiellement payée', paid: 'Payée',
+  pending: 'En attente', sent: 'Envoyé', accepted: 'Accepté', refused: 'Refusé', expired: 'Expiré', converted: 'Converti', cancelled: 'Annulé', draft: 'Brouillon', validated: 'Validé', unpaid: 'Impayée', partial: 'Partiellement payée', paid: 'Payée',
 };
 /** Libellé de statut d'une ligne de l'historique (une facture validée affiche son état de paiement). */
 export function txStatus(r: { kind: DocKind; status: string; paymentStatus: string | null }): { label: string; chip: string } {
   if (r.kind === 'invoice' && r.status === 'validated' && r.paymentStatus) return { label: DOC_STATUS[r.paymentStatus] ?? r.paymentStatus, chip: r.paymentStatus === 'paid' ? 'ok' : r.paymentStatus === 'partial' ? 'warn' : 'danger' };
-  const chip = ['accepted', 'validated', 'converted'].includes(r.status) ? 'ok' : ['refused', 'cancelled'].includes(r.status) ? 'danger' : r.status === 'pending' ? 'warn' : 'off';
+  const chip = ['accepted', 'validated', 'converted'].includes(r.status) ? 'ok' : ['refused', 'cancelled'].includes(r.status) ? 'danger' : r.status === 'pending' ? 'warn' : r.status === 'sent' ? 'info' : 'off';
   return { label: DOC_STATUS[r.status] ?? r.status, chip };
 }
 export const FILTER_STATUS: Record<string, { value: string; label: string }[]> = {
-  '': ['pending', 'accepted', 'refused', 'expired', 'converted', 'cancelled', 'draft', 'validated', 'unpaid', 'partial', 'paid'].map((v) => ({ value: v, label: DOC_STATUS[v]! })),
+  '': ['pending', 'sent', 'accepted', 'refused', 'expired', 'converted', 'cancelled', 'draft', 'validated', 'unpaid', 'partial', 'paid'].map((v) => ({ value: v, label: DOC_STATUS[v]! })),
 };
 export const DOC_TYPES = [{ value: 'registry_extract', label: 'Extrait du registre de commerce' }, { value: 'tax_card', label: 'Carte d’identification fiscale' }, { value: 'contract', label: 'Contrat commercial' }, { value: 'other', label: 'Autre document' }];
 export const ACTIVITY_KINDS = [

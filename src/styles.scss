@@ -110,6 +110,8 @@ a.card:hover, .card.link:hover { box-shadow: var(--shadow-md); border-color: var
 .chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
 .chip.ok { background: var(--brand-50); color: var(--brand); }
 .chip.warn { background: var(--accent-100); color: var(--accent-ink); }
+.chip.info { background: var(--surface); color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.chip.solid { background: var(--brand); color: #fff; }
 .chip.off { background: #f2f4f7; color: var(--muted); }
 .chip.danger { background: var(--danger-50); color: var(--danger); }
 .chip.accent { background: var(--accent); color: var(--brand-900); }
@@ -142,6 +144,8 @@ table.lines th.r, table.lines td.r, table.t th.r, table.t td.r { text-align: rig
 .form-grid .mat-mdc-form-field, .stack .mat-mdc-form-field { width: 100%; }
 .toolbar-row .mat-mdc-form-field { width: 200px; flex: 0 1 200px; }
 .toolbar-row .mat-mdc-form-field:first-child { width: 320px; flex: 1 1 260px; max-width: 420px; }
+/* Sélecteurs encapsulés dans leur composant : le champ occupe la largeur de l'emplacement, sans déborder sur le filtre voisin */
+.toolbar-row :is(app-supplier-picker, app-article-search, app-supplier-search) > .mat-mdc-form-field:first-child { width: 100%; max-width: 100%; }
 .mat-mdc-form-field-icon-prefix { padding-left: 12px !important; app-icon { color: var(--muted); margin-right: 4px; } }
 .mat-mdc-form-field-icon-suffix app-icon { color: var(--muted); }
 .mat-mdc-form-field-subscript-wrapper { font-size: 12px; }

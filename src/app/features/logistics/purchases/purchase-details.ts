@@ -37,6 +37,7 @@ const common = `.addresses{display:grid;grid-template-columns:repeat(auto-fit,mi
       </app-page-header>
       <div class="status-row"><span class="chip" [class.ok]="good(d().status)" [class.off]="bad(d().status)">{{ label(d().status) }}</span><span class="muted">{{ d().orderDate | date: 'dd/MM/yyyy' : 'UTC' }}@if (d().expectedDate) { — livraison prévue le {{ d().expectedDate | date: 'dd/MM/yyyy' : 'UTC' }}}</span></div>
       @if (d().cancelReason) {<div class="card info">Annulée : {{ d().cancelReason }}</div>}
+      @if (d().paymentTerms) {<p class="muted" style="margin:0 0 12px">Conditions de paiement : <strong>{{ d().paymentTerms }}</strong></p>}
       @if (d().supplierAddress || d().receivingAddress) {<div class="addresses">
         <div class="card"><h3>Adresse du fournisseur</h3>@if (d().supplierAddress; as a) {<strong>{{ a.label }}</strong><app-address-body [a]="a" />} @else {<p class="muted">Non précisée</p>}</div>
         <div class="card"><h3>Adresse de réception (notre entreprise)</h3>@if (d().receivingAddress; as r) {<strong>{{ r.name }}</strong><p class="muted">{{ r.address || 'Adresse non renseignée' }}</p>} @else {<p class="muted">Non précisée</p>}</div>

@@ -1,6 +1,6 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -34,7 +34,14 @@ const today = () => new Date().toISOString().slice(0, 10);
         <div class="card sec"><div class="form-grid">
           <app-party-picker label="Fournisseur" endpoint="/suppliers" [extra]="{ foreign: false }" [initial]="supplierInit()" (picked)="pickSupplier($event)" />
           <mat-form-field appearance="outline"><mat-label>Date de commande</mat-label><input matInput type="date" formControlName="orderDate" /></mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Livraison prévue</mat-label><input matInput type="date" formControlName="expectedDate" /></mat-form-field></div></div>
+          <mat-form-field appearance="outline"><mat-label>Livraison prévue</mat-label><input matInput type="date" formControlName="expectedDate" /></mat-form-field></div>
+          @if (supplier(); as s) {
+            @if (!id() && s.isForeign) {<p class="blocked" role="alert">Fournisseur étranger : créez un <a [routerLink]="['/imports', 'new']" [queryParams]="{ supplierId: s.id }">dossier d’importation</a>.</p>}
+            @else if (!id() && s.status !== 'active') {<p class="blocked" role="alert">Fournisseur {{ s.statusLabel.toLowerCase() }} : aucune nouvelle commande n’est possible.</p>}
+            @else if (s.ordersBlocked) {<p class="blocked" role="alert">Seuil d’impayés dépassé : la commande ne pourra pas être confirmée tant que le solde dépasse le seuil.</p>}
+            <p class="muted terms-info">@if (s.leadTimeDays !== null) {Délai de livraison habituel : {{ s.leadTimeDays }} jour(s). }@if (s.discountPct) {Remise habituelle de {{ s.discountPct }} % proposée sur les lignes.}</p>
+          }
+          <mat-form-field appearance="outline" class="full"><mat-label>Conditions de paiement</mat-label><textarea matInput rows="1" maxlength="500" formControlName="paymentTerms"></textarea><mat-hint>Reprises de la fiche fournisseur, modifiables pour cette commande</mat-hint></mat-form-field></div>
         <div class="card sec"><h3>Adresses</h3><div class="addr-grid">
           <section><h4>Adresse du fournisseur</h4>
             @if (supplierId()) {<app-address-select label="Adresse du fournisseur" noneLabel="Aucune (adresse principale)" [addresses]="supplier()?.deliveryAddresses ?? []" [current]="currentAddress()" [(value)]="addressId" />}
@@ -44,17 +51,20 @@ const today = () => new Date().toISOString().slice(0, 10);
               <mat-select [value]="warehouseId()" (selectionChange)="pickWarehouse($event.value)"><mat-option value="">Non précisé</mat-option>@for (w of warehouses(); track w.id) {<mat-option [value]="w.id">{{ w.code }} — {{ w.name }}</mat-option>}</mat-select></mat-form-field>
             @if (receiving(); as r) {<div class="ours"><strong>{{ r.name }}</strong><span>{{ r.address || 'Adresse non renseignée (Stock › Magasins)' }}</span></div>}</section>
         </div></div>
-        <div class="card sec"><h3>Lignes</h3><app-lines-editor [array]="lines" [opts]="{ price: true, discount: true, vat: true, priceLabel: 'Prix d’achat HT' }" /></div>
+        <div class="card sec"><h3>Lignes</h3><app-lines-editor [array]="lines" [opts]="{ price: true, discount: true, vat: true, priceLabel: 'Prix d’achat HT', defaultDiscount: supplier()?.discountPct ?? 0 }" /></div>
         <div class="card sec"><mat-form-field appearance="outline" style="width:100%"><mat-label>Notes</mat-label><textarea matInput rows="2" formControlName="notes"></textarea></mat-form-field></div>
-        <div class="toolbar-row"><span class="spacer"></span><a mat-button [routerLink]="id() ? ['/purchase-orders', id()] : ['/purchase-orders']">Annuler</a><button mat-flat-button color="primary" [disabled]="saving()">Enregistrer</button></div>
+        <div class="toolbar-row"><span class="spacer"></span><a mat-button [routerLink]="id() ? ['/purchase-orders', id()] : ['/purchase-orders']">Annuler</a><button mat-flat-button color="primary" [disabled]="saving() || blocked()">Enregistrer</button></div>
       </form>}</div>`,
-  styles: `.sec{margin-bottom:16px}h3{margin:0 0 12px;font-size:16px}.err{color:var(--danger);margin-bottom:16px}${ADDRESS_STYLES}`,
+  styles: `.sec{margin-bottom:16px}h3{margin:0 0 12px;font-size:16px}.err{color:var(--danger);margin-bottom:16px}.blocked{margin:0 0 12px;padding:8px 12px;border-radius:var(--r-md);background:var(--danger-50);border:1px solid var(--danger-200);color:var(--danger)}.terms-info{margin:0 0 12px;font-size:13px}.terms-info:empty{display:none}${ADDRESS_STYLES}`,
 })
 export class OrderForm {
   id = input<string>();
   private api = inject(Api); private fb = inject(FormBuilder); private router = inject(Router); private toast = inject(ToastService); private ref = inject(ReferenceDataService);
   supplierId = signal(''); supplierInit = signal<{ id: string; name: string } | null>(null); lines: FormArray<LineGroup> = this.fb.array<LineGroup>([]);
-  form = this.fb.nonNullable.group({ orderDate: [today()], expectedDate: [''], notes: [''], lines: this.lines });
+  form = this.fb.nonNullable.group({ orderDate: [today()], expectedDate: [''], notes: [''], paymentTerms: ['', Validators.maxLength(500)], lines: this.lines });
+  private route = inject(ActivatedRoute);
+  /** Une nouvelle commande est impossible pour un fournisseur étranger ou non actif (le serveur l'impose aussi). */
+  blocked = () => { const s = this.supplier(); return !this.id() && !!s && (s.isForeign || s.status !== 'active'); };
   loading = signal(false); saving = signal(false); error = signal('');
   // Adresses : celle du fournisseur (copiée sur la commande) et le magasin qui réceptionne
   supplier = signal<SupplierDto | null>(null); addressId = signal(''); currentAddress = signal<AddressSnapshot | null>(null);
@@ -69,8 +79,15 @@ export class OrderForm {
   private loadSupplier(id: string, useDefault: boolean) {
     this.api.get<SupplierDto>(`/suppliers/${id}`).subscribe({ next: (s) => {
       if (this.supplierId() !== id) return; this.supplier.set(s);
-      if (useDefault) { this.addressId.set(s.deliveryAddresses.find((a) => a.isDefault && !a.archived)?.id ?? ''); this.addressReady = true; }
+      if (useDefault) { this.addressId.set(s.deliveryAddresses.find((a) => a.isDefault && !a.archived)?.id ?? ''); this.addressReady = true; this.applyTerms(s); }
     }, error: () => undefined }); // sans « fournisseurs : consulter », le serveur applique l'adresse par défaut
+  }
+  /** Paramètres commerciaux de la fiche : conditions de paiement et date de livraison prévue (délai habituel). */
+  private applyTerms(s: SupplierDto) {
+    this.supplierInit.set({ id: s.id, name: s.name });
+    this.form.controls.paymentTerms.setValue(s.paymentTerms ?? '');
+    const date = this.form.controls.orderDate.value;
+    if (s.leadTimeDays !== null && date && !this.form.controls.expectedDate.dirty) this.form.controls.expectedDate.setValue(iso(new Date(Date.parse(date) + s.leadTimeDays * 86_400_000).toISOString()));
   }
   ngOnInit() {
     this.ref.load$().subscribe(); const id = this.id();
@@ -78,12 +95,14 @@ export class OrderForm {
       this.warehouses.set(w.filter((x) => x.isActive));
       if (!this.id() && !this.warehouseTouched) this.warehouseId.set(w.find((x) => x.isActive && x.isDefault)?.id ?? '');
     });
+    const preselected = this.route.snapshot.queryParamMap.get('supplierId'); // depuis la fiche fournisseur
+    if (!id && preselected) this.pickSupplier(preselected);
     if (!id) return; this.loading.set(true);
     this.api.get(`/purchase-orders/${id}`).subscribe({ next: (o) => {
       if (!o.editable) { this.toast.error('Seule une commande en brouillon est modifiable'); this.router.navigate(['/purchase-orders', id]); return; }
       this.currentAddress.set(o.supplierAddress); this.addressId.set(o.supplierAddress?.addressId ?? ''); this.keptAddress = o.supplierAddress?.addressId ?? ''; this.addressReady = true;
       this.currentReceiving.set(o.receivingAddress); this.warehouseId.set(o.receivingAddress?.warehouseId ?? ''); this.keptWarehouse = o.receivingAddress?.warehouseId ?? '';
-      this.supplierId.set(o.supplierId); this.loadSupplier(o.supplierId, false); this.supplierInit.set({ id: o.supplierId, name: o.supplier?.name }); this.form.patchValue({ orderDate: iso(o.orderDate), expectedDate: iso(o.expectedDate), notes: o.notes ?? '' });
+      this.supplierId.set(o.supplierId); this.loadSupplier(o.supplierId, false); this.supplierInit.set({ id: o.supplierId, name: o.supplier?.name }); this.form.patchValue({ orderDate: iso(o.orderDate), expectedDate: iso(o.expectedDate), notes: o.notes ?? '', paymentTerms: o.paymentTerms ?? '' });
       o.lines.forEach((l: any) => this.lines.push(lineGroup(this.fb, { productId: l.productId ?? '', reference: l.reference ?? '', designation: l.designation, quantity: l.quantity, unitPrice: this.ref.fromMinor(l.unitPriceMinor), discountPct: l.discountPct, vatCode: l.vat?.code })));  
       this.loading.set(false); }, error: (e) => { this.toast.error(errorMessage(e)); this.router.navigate(['/purchase-orders']); } });
   }
@@ -96,6 +115,8 @@ export class OrderForm {
       ...((this.id() ? this.warehouseId() !== this.keptWarehouse : this.warehouseTouched || !!this.warehouseId()) && { receivingWarehouseId: this.warehouseId() || null }),
     };
     const body = { ...addresses, supplierId: this.supplierId(), orderDate: v.orderDate || undefined, expectedDate: v.expectedDate || undefined, notes: v.notes || undefined,
+      // Champ intact et vide (fiche fournisseur non consultable) : le serveur reprend les conditions de la fiche
+      ...((this.form.controls.paymentTerms.dirty || v.paymentTerms.trim()) && { paymentTerms: v.paymentTerms.trim() }),
       lines: this.lines.getRawValue().map((l) => ({ ...(l.productId && { productId: l.productId }), designation: l.designation, quantity: Number(l.quantity), unitPriceMinor: this.ref.toMinor(Number(l.unitPrice)), discountPct: Number(l.discountPct) || 0, ...(l.vatCode && { vatCode: l.vatCode }) })) };
     const id = this.id(); (id ? this.api.put(`/purchase-orders/${id}`, body) : this.api.post('/purchase-orders', body)).subscribe({ next: (o) => { this.toast.success('Commande enregistrée'); this.router.navigate(['/purchase-orders', o.id]); }, error: (e) => { this.error.set(errorMessage(e)); this.saving.set(false); } });
   }
@@ -172,7 +193,7 @@ export class ReceiptForm {
       <form [formGroup]="form" (ngSubmit)="save()">
         @if (error()) {<div class="card err" role="alert">{{ error() }}</div>}
         <div class="card sec"><div class="form-grid">
-          <app-party-picker label="Fournisseur" endpoint="/suppliers" [readonly]="!!orderId()" [initial]="supplierInit()" (picked)="supplierId.set($event)" />
+          <app-party-picker label="Fournisseur" endpoint="/suppliers" [extra]="{ status: 'all' }" [readonly]="!!orderId()" [initial]="supplierInit()" (picked)="supplierId.set($event)" />
           <mat-form-field appearance="outline"><mat-label>N° de la facture fournisseur</mat-label><input matInput formControlName="supplierInvoiceNumber" />@if (form.controls.supplierInvoiceNumber.invalid && form.controls.supplierInvoiceNumber.touched) {<mat-error>Requis</mat-error>}</mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Date de facture</mat-label><input matInput type="date" formControlName="invoiceDate" /></mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Échéance</mat-label><input matInput type="date" formControlName="dueDate" /></mat-form-field></div></div>

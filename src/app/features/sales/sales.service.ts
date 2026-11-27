@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import { Customer2, Page } from '../../shared/models/api.models';
-import { CalcPreview, DocKind, PaymentDto, SalesDoc, SourceLines } from './sales.models';
+import { CalcPreview, DocKind, PaymentDto, QuotationActivity, SalesDoc, SourceLines } from './sales.models';
 
 @Injectable({ providedIn: 'root' })
 export class SalesService {
@@ -18,6 +18,10 @@ export class SalesService {
   update(kind: DocKind, id: string, body: object) { return this.http.put<SalesDoc>(`${this.api}/${kind}/${id}`, body); }
   remove(kind: DocKind, id: string) { return this.http.delete<void>(`${this.api}/${kind}/${id}`); }
   action<T = SalesDoc>(kind: DocKind, id: string, action: string, body: object = {}) { return this.http.post<T>(`${this.api}/${kind}/${id}/${action}`, body); }
+  quotationActivities(id: string, page: number, kind = '') {
+    let p = new HttpParams().set('page', page).set('limit', 15); if (kind) p = p.set('kind', kind);
+    return this.http.get<{ items: QuotationActivity[]; total: number; kinds: { value: string; label: string }[] }>(`${this.api}/quotations/${id}/activities`, { params: p });
+  }
   calculate(body: object) { return this.http.post<CalcPreview>(`${this.api}/sales/calculate`, body); }
   sourceLines(type: string, id: string) { return this.http.get<SourceLines>(`${this.api}/delivery-notes/source-lines`, { params: { type, id } }); }
   invoiceFromDeliveryNotes(ids: string[]) { return this.http.post<SalesDoc>(`${this.api}/invoices/from-delivery-notes`, { deliveryNoteIds: ids }); }
