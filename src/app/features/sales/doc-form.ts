@@ -123,7 +123,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
                   <td class="pos"><span class="handle" cdkDragHandle title="Glisser pour réorganiser"><app-icon name="drag_indicator" /></span><strong>{{ (i + 1) * 10 }}</strong></td>
                   <td class="ref">{{ g.controls.reference.value || '—' }}</td>
                   <td><input class="w" formControlName="designation" placeholder="Désignation" aria-label="Désignation" /></td>
-                  <td class="r"><input appDecimal class="q" formControlName="quantity" aria-label="Quantité" [class.bad]="g.controls.quantity.invalid" />@if (g.controls.quantity.invalid) {<small class="err-t" role="alert">{{ qtyError(g.controls.quantity) }}</small>} @else if (g.controls.unit.value) {<small class="muted">{{ g.controls.unit.value }}</small>}</td>
+                  <td class="r"><input appDecimal clearOnFocus class="q" formControlName="quantity" aria-label="Quantité" [class.bad]="g.controls.quantity.invalid" />@if (g.controls.quantity.invalid) {<small class="err-t" role="alert">{{ qtyError(g.controls.quantity) }}</small>} @else if (g.controls.unit.value) {<small class="muted">{{ g.controls.unit.value }}</small>}</td>
                   <td class="r"><input class="p" type="number" min="0" [step]="1 / 10 ** ref.decimals()" formControlName="unitPrice" aria-label="Prix unitaire" /></td>
                   <td class="r"><input appDecimal clearOnFocus class="d" formControlName="discountPct" aria-label="Remise %" [readOnly]="syncOn()" [class.locked]="syncOn()" [attr.title]="syncOn() ? 'Fixée par la remise globale' : null" [class.bad]="g.controls.discountPct.invalid" />@if (g.controls.discountPct.invalid) {<small class="err-t" role="alert">{{ discError(g.controls.discountPct) }}</small>}</td>
                   <td><select formControlName="vatCode" aria-label="Code TVA"><option value="">—</option>@for (v of ref.vatRates(); track v.code) {<option [value]="v.code">{{ v.code }} ({{ vatText(v) }})</option>}</select></td>
@@ -178,7 +178,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
               @if (legacyPct(); as old) {<div class="warn legacy" role="status"><app-icon name="info" /><div>Ce document porte une ancienne remise globale de {{ old }} % appliquée sur le total, en plus des remises de ligne. Elle est conservée telle quelle.
                 <mat-checkbox [checked]="removeLegacy()" (change)="setRemoveLegacy($event.checked)">La retirer pour utiliser les nouvelles remises</mat-checkbox></div></div>}
               <div class="row discounts">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Remise globale (%)</mat-label><input matInput appDecimal formControlName="syncDiscount" [readOnly]="legacyKept()" />
+                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Remise globale (%)</mat-label><input matInput appDecimal [clearOnFocus]="kind() === 'quotations'" formControlName="syncDiscount" [readOnly]="legacyKept()" />
                   <mat-hint>Appliquée à chaque article</mat-hint>@if (header.controls.syncDiscount.invalid) {<mat-error>{{ discError(header.controls.syncDiscount) }}</mat-error>}</mat-form-field>
                 <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Remise supplémentaire ({{ ref.symbol() }})</mat-label><input matInput appDecimal formControlName="amountDiscount" [readOnly]="legacyKept()" />
                   <mat-hint>Montant déduit après les remises d’articles</mat-hint>@if (header.controls.amountDiscount.invalid) {<mat-error>Montant positif</mat-error>}</mat-form-field>
@@ -258,8 +258,8 @@ export class DocForm {
   private applySync(v: number | null) {
     const sync = Number.isFinite(v) && v! > 0 && v! <= 100 && this.header.controls.syncDiscount.valid ? v! : 0;
     this.syncValue.set(sync);
-    // Retour à zéro : les derniers taux restent affichés et redeviennent modifiables
-    if (sync) for (const g of this.lines.controls) if (g.controls.discountPct.value !== sync) g.controls.discountPct.setValue(sync, { emitEvent: false });
+    // Devis : saisir 0 remet aussi les lignes à 0. Ailleurs, ou champ laissé vide, les derniers taux restent modifiables.
+    if (sync || (v === 0 && this.kind() === 'quotations')) for (const g of this.lines.controls) if (g.controls.discountPct.value !== sync) g.controls.discountPct.setValue(sync, { emitEvent: false });
   }
   form = this.fb.group({ header: this.header, lines: this.lines, schedule: this.schedule, srcQty: this.srcQty, srcSerials: this.srcSerials, srcPick: this.srcPick });
   srcMode = signal<SourceLines | null>(null);
