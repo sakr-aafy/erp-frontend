@@ -46,7 +46,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
   imports: [QtyPipe, AddressSelect, CustomerSearch, DecimalInput, MatCheckboxModule, ReactiveFormsModule, RouterLink, MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule, Icon, MatAutocompleteModule, PageHeader, Skeleton, MoneyPipe, ArticleSearch, CdkDropList, CdkDrag, CdkDragHandle],
   template: `
     <div class="page">
-      <app-page-header [title]="(id() ? 'Modifier ' + (cfg().gender === 'f' ? 'la ' : 'le ') : cfg().gender === 'f' ? 'Nouvelle ' : 'Nouveau ') + cfg().singular" [subtitle]="subtitle()" />
+      <app-page-header [title]="title()" [subtitle]="subtitle()" />
       @if (loading()) {<div class="card"><app-skeleton /></div>} @else {
       <form [formGroup]="form" (ngSubmit)="save()">
         @if (error()) {<div class="card err" role="alert">{{ error() }}</div>}
@@ -125,7 +125,7 @@ const addDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
                   <td><input class="w" formControlName="designation" placeholder="Désignation" aria-label="Désignation" /></td>
                   <td class="r"><input appDecimal class="q" formControlName="quantity" aria-label="Quantité" [class.bad]="g.controls.quantity.invalid" />@if (g.controls.quantity.invalid) {<small class="err-t" role="alert">{{ qtyError(g.controls.quantity) }}</small>} @else if (g.controls.unit.value) {<small class="muted">{{ g.controls.unit.value }}</small>}</td>
                   <td class="r"><input class="p" type="number" min="0" [step]="1 / 10 ** ref.decimals()" formControlName="unitPrice" aria-label="Prix unitaire" /></td>
-                  <td class="r"><input appDecimal class="d" formControlName="discountPct" aria-label="Remise %" [readOnly]="syncOn()" [class.locked]="syncOn()" [attr.title]="syncOn() ? 'Fixée par la remise globale' : null" [class.bad]="g.controls.discountPct.invalid" />@if (g.controls.discountPct.invalid) {<small class="err-t" role="alert">{{ discError(g.controls.discountPct) }}</small>}</td>
+                  <td class="r"><input appDecimal clearOnFocus class="d" formControlName="discountPct" aria-label="Remise %" [readOnly]="syncOn()" [class.locked]="syncOn()" [attr.title]="syncOn() ? 'Fixée par la remise globale' : null" [class.bad]="g.controls.discountPct.invalid" />@if (g.controls.discountPct.invalid) {<small class="err-t" role="alert">{{ discError(g.controls.discountPct) }}</small>}</td>
                   <td><select formControlName="vatCode" aria-label="Code TVA"><option value="">—</option>@for (v of ref.vatRates(); track v.code) {<option [value]="v.code">{{ v.code }} ({{ vatText(v) }})</option>}</select></td>
                   <td class="r total">{{ lineTotals().get(g) | money }}</td>
                   <td class="tools"><button mat-icon-button type="button" [disabled]="first" (click)="move(i, -1)" [attr.aria-label]="'Monter la ligne ' + (i + 1) * 10"><app-icon name="arrow_up" /></button>
@@ -308,6 +308,13 @@ export class DocForm {
 
   subtitle = () => this.kind() === 'delivery-notes' ? 'Livraison totale ou partielle : le stock ne sort qu’à la validation.' : 'Les montants sont calculés par le serveur avec les règles fiscales validées.';
   private view = inject(ChangeDetectorRef);
+  /** Numéro du devis en cours de modification, affiché dans le titre. */
+  docNumber = signal('');
+  title = () => {
+    const { gender, singular } = this.cfg(); const f = gender === 'f';
+    if (!this.id()) return `${f ? 'Nouvelle' : 'Nouveau'} ${singular}`;
+    return [`Modifier ${f ? 'la' : 'le'} ${singular}`, this.docNumber()].filter(Boolean).join(' ');
+  };
   stockOf = (l: SourceLine) => l.stock?.find((s) => s.warehouseId === this.header.controls.warehouseId.value)?.qty ?? 0;
   private wanted = (i: number) => Number(this.srcQty.at(i).value) || 0;
   qtyOver = (l: SourceLine, i: number) => this.srcPick.at(i).value && this.wanted(i) > l.remainingQty + 1e-9;
@@ -400,6 +407,7 @@ export class DocForm {
       next: (d: SalesDoc) => {
         if (d.editable === false) { this.toast.error('Ce document n’est plus modifiable.'); this.router.navigate([this.cfg().route, id]); return; }
         this.customerSel.set({ id: d.customerId, name: d.customer.name }); this.customerId.set(d.customerId); this.lockedCustomer.set(false);
+        if (this.kind() === 'quotations') this.docNumber.set(d.number ?? '');
         this.revision = d.revision; this.fromDeliveries = !!d.deliveryNoteIds?.length; this.legacyPct.set(d.globalDiscountPct > 0 ? d.globalDiscountPct : 0);
         // Document antérieur (adresse portée par l'ancien champ) : l'adresse par défaut du client est proposée
         const legacy = !d.deliveryAddress && !!d.customer.shippingAddress;

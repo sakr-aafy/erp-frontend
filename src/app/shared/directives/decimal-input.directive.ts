@@ -1,4 +1,4 @@
-import { Directive, ElementRef, HostListener, forwardRef, inject } from '@angular/core';
+import { Directive, ElementRef, HostListener, booleanAttribute, forwardRef, inject, input } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 /** « 1,5 », « 1.5 » ou « 1 234,5 » (saisie ou collage) → nombre ; vide → null ; texte non numérique → NaN (refusé par les validateurs). */
@@ -16,16 +16,28 @@ export const formatDecimal = (v: unknown) => (v === null || v === undefined || (
   host: { type: 'text', inputmode: 'decimal', autocomplete: 'off' },
 })
 export class DecimalInput implements ControlValueAccessor {
+  /** Le champ se vide à l'entrée pour saisir directement ; sans frappe, l'ancienne valeur revient à la sortie. */
+  clearOnFocus = input(false, { transform: booleanAttribute });
+  /** Texte masqué tant que rien n'est saisi : la valeur du formulaire, elle, ne change pas. */
+  private hidden: string | null = null;
   private el = inject<ElementRef<HTMLInputElement>>(ElementRef);
   private changed: (v: number | null) => void = () => undefined; private touched: () => void = () => undefined;
   writeValue(v: unknown) {
     const input = this.el.nativeElement;
     // La saisie en cours (« 1, ») n'est pas réécrite quand elle représente déjà la même valeur
-    if (parseDecimal(input.value) !== v) input.value = formatDecimal(v);
+    if (parseDecimal(input.value) !== v) { input.value = formatDecimal(v); this.hidden = null; }
   }
   registerOnChange(fn: (v: number | null) => void) { this.changed = fn; }
   registerOnTouched(fn: () => void) { this.touched = fn; }
   setDisabledState(disabled: boolean) { this.el.nativeElement.disabled = disabled; }
-  @HostListener('input') onInput() { this.changed(parseDecimal(this.el.nativeElement.value)); }
-  @HostListener('blur') onBlur() { this.touched(); }
+  @HostListener('focus') onFocus() {
+    const input = this.el.nativeElement;
+    if (!this.clearOnFocus() || input.readOnly) return;
+    this.hidden = input.value; input.value = '';
+  }
+  @HostListener('input') onInput() { this.hidden = null; this.changed(parseDecimal(this.el.nativeElement.value)); }
+  @HostListener('blur') onBlur() {
+    if (this.hidden !== null) { this.el.nativeElement.value = this.hidden; this.hidden = null; }
+    this.touched();
+  }
 }
